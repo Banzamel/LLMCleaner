@@ -1,0 +1,8 @@
+# Build output
+dist/
+portable/
+
+# Local runtime files
+logs/
+config.json
+*.log
