@@ -9,9 +9,10 @@
       3. Lokalny model laduje sie dopiero NA ZADANIE:
            w - wyjasnia, czym byly pozostalosci (np. "Klei - studio gier, Oxygen Not Included")
            p - rozmowa o planie, folderach i programach
+           a - analiza dysku: co zajmuje miejsce (AI opisuje najwieksze foldery i doradza)
       4. Podsumowanie i pytanie "Uruchomic czyszczenie? [t/N]".
-      5. Kategorie sa czyszczone, foldery i pliki ida do Kosza, klucze rejestru sa
-         przed usunieciem eksportowane do .reg.
+      5. Kategorie sa czyszczone, foldery i pliki ida do Kosza, przed usunieciem kluczy rejestru
+         powstaje punkt przywracania systemu i kopia .reg.
 
     Model nie decyduje o usuwaniu i niczego nie wykonuje - tylko wyjasnia i odpowiada.
 
@@ -19,16 +20,18 @@
       -Podglad   tylko skan i plan, nic nie jest usuwane
       -BezLLM    wylacza asystenta (w i p)
       -Model     model Ollama (domyslnie z config.json obok skryptu, inaczej qwen3:4b-instruct)
+      -BezAktualizacji  nie sprawdza przy starcie, czy jest nowa wersja na GitHubie
 
     https://github.com/Banzamel/LLMCleaner - licencja MIT
 #>
 param(
     [switch]$Podglad,
     [switch]$BezLLM,
-    [string]$Model
+    [string]$Model,
+    [switch]$BezAktualizacji
 )
 
-$Wersja = '1.0.0'
+$Wersja = '1.1.0'
 $ErrorActionPreference = 'SilentlyContinue'
 
 # Model wybrany w instalatorze (config.json obok skryptu), chyba ze podano -Model
@@ -47,6 +50,7 @@ if (-not $adm) {
     $argumenty = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Model', "`"$Model`"")
     if ($Podglad) { $argumenty += '-Podglad' }
     if ($BezLLM) { $argumenty += '-BezLLM' }
+    if ($BezAktualizacji) { $argumenty += '-BezAktualizacji' }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argumenty
     exit
 }
@@ -83,6 +87,20 @@ function Rozmiar([double]$b) {
 }
 
 function WolneC { [double](Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace }
+
+# Punkt przywracania systemu przed zmianami w rejestrze (obok kopii .reg). Zwraca opis wyniku.
+function PunktPrzywracania {
+    $ostatni = { Get-ComputerRestorePoint | Sort-Object SequenceNumber | Select-Object -Last 1 }
+    $przed = & $ostatni
+    try {
+        Checkpoint-Computer -Description "LLMCleaner $Wersja" -RestorePointType MODIFY_SETTINGS -ErrorAction Stop -WarningAction SilentlyContinue
+    }
+    catch { return @{ Ok = $false; Opis = "nie utworzono ($($_.Exception.Message.Trim())) - ochrona systemu może być wyłączona" } }
+    $po = & $ostatni
+    if ($po -and (-not $przed -or $po.SequenceNumber -ne $przed.SequenceNumber)) { return @{ Ok = $true; Opis = "utworzony (nr $($po.SequenceNumber))" } }
+    $kiedy = if ($przed) { $przed.ConvertToDateTime($przed.CreationTime).ToString('dd.MM HH:mm') } else { '?' }
+    @{ Ok = $false; Opis = "pominięty przez Windows - limit jednego punktu na dobę (ostatni: $kiedy)" }
+}
 
 # ---------- PLIKI: POMIAR I USUWANIE ----------
 
@@ -170,6 +188,21 @@ function UsunZawartosc($sciezka, $minWiekDni = 0) {
     @{ Bajty = $zwolniono; Bledy = $bledy }
 }
 
+# Windows.old i pliki instalatora aktualizacji usuwa Oczyszczanie dysku Windows (cleanmgr /sagerun),
+# tak jak "Wyczysc pliki systemowe". Recznie byloby niebezpiecznie: junctions w Windows.old
+# wskazuja na biezace C:\Users, a przejmowanie uprawnien mogloby je zmienic.
+$SageId = 'StateFlags0777'
+$SageKlucz = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
+$SageHandlery = @('Previous Installations', 'Temporary Setup Files')
+function UsunPoprzedniWindows {
+    foreach ($h in $SageHandlery) {
+        if (Test-Path "$SageKlucz\$h") { Set-ItemProperty "$SageKlucz\$h" -Name $SageId -Value 2 -Type DWord }
+    }
+    $p = Start-Process cleanmgr.exe -ArgumentList '/sagerun:777' -PassThru
+    if ($p -and -not $p.WaitForExit(3600000)) { Log 'cleanmgr: przekroczony czas' }
+    foreach ($h in $SageHandlery) { Remove-ItemProperty "$SageKlucz\$h" -Name $SageId }
+}
+
 # ---------- BIALA LISTA KATEGORII ----------
 
 function ProfilePrzegladarki($userData) {
@@ -190,6 +223,24 @@ foreach ($ud in "$env:LOCALAPPDATA\Google\Chrome\User Data",
 }
 Get-ChildItem "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles" -Directory -Force |
     ForEach-Object { $cachePrzegladarek += "$($_.FullName)\cache2" }
+
+# Cache aplikacji - kazda grupa jest pomijana osobno, gdy jej program dziala
+function CacheElectron($d) { "$d\Cache", "$d\Code Cache", "$d\GPUCache", "$d\DawnCache", "$d\Service Worker\CacheStorage" }
+$steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam').SteamPath
+$grupyAplikacji = @(
+    @{ Nazwa = 'Discord'; Procesy = @('discord'); Sciezki = @(CacheElectron "$env:APPDATA\discord") }
+    @{ Nazwa = 'Slack'; Procesy = @('slack'); Sciezki = @(CacheElectron "$env:APPDATA\Slack") }
+    @{ Nazwa = 'Teams (klasyczny)'; Procesy = @('teams'); Sciezki = @(CacheElectron "$env:APPDATA\Microsoft\Teams") }
+    @{ Nazwa = 'VS Code'; Procesy = @('code'); Sciezki = @((CacheElectron "$env:APPDATA\Code") + "$env:APPDATA\Code\CachedData", "$env:APPDATA\Code\CachedExtensionVSIXs") }
+    @{ Nazwa = 'Spotify'; Procesy = @('spotify'); Sciezki = @("$env:LOCALAPPDATA\Spotify\Data") }
+    @{ Nazwa = 'Steam'; Procesy = @('steam', 'steamwebhelper')
+       Sciezki = @($(if ($steam) { $s = $steam -replace '/', '\'; "$s\appcache\httpcache", "$s\appcache\librarycache" }) + "$env:LOCALAPPDATA\Steam\htmlcache") }
+    @{ Nazwa = 'JetBrains (cache i indeksy)'; Procesy = @('phpstorm64', 'webstorm64', 'idea64', 'pycharm64', 'rider64', 'clion64', 'goland64', 'datagrip64', 'rubymine64', 'rustrover64')
+       Sciezki = @(Get-ChildItem "$env:LOCALAPPDATA\JetBrains" -Directory -Force | ForEach-Object { "$($_.FullName)\caches", "$($_.FullName)\index" }) }
+)
+# Zostaja tylko aplikacje, ktore sa na tym komputerze
+foreach ($g in $grupyAplikacji) { $g.Sciezki = @($g.Sciezki | Where-Object { $_ -and (Test-Path -LiteralPath $_) }) }
+$grupyAplikacji = @($grupyAplikacji | Where-Object { $_.Sciezki.Count })
 
 $Kategorie = @(
     @{ Id = 'temp'; Nazwa = 'Pliki tymczasowe (TEMP)'; MinWiek = 1
@@ -221,8 +272,15 @@ $Kategorie = @(
        Opis = 'Tylko cache stron i shaderów. Hasła, zakładki, historia i zalogowane sesje zostają.' }
     @{ Id = 'dev'; Nazwa = 'Cache narzędzi programistycznych'
        Sciezki = @("$env:LOCALAPPDATA\npm-cache", "$env:LOCALAPPDATA\pip\cache", "$env:LOCALAPPDATA\node-gyp\Cache",
-                   "$env:LOCALAPPDATA\Yarn\Cache", "$env:LOCALAPPDATA\uv\cache", "$env:LOCALAPPDATA\NuGet\v3-cache")
-       Opis = 'Pobrane paczki npm/pip/yarn/uv/NuGet. Pobiorą się ponownie przy następnej instalacji.' }
+                   "$env:LOCALAPPDATA\Yarn\Cache", "$env:LOCALAPPDATA\uv\cache", "$env:LOCALAPPDATA\NuGet\v3-cache",
+                   "$env:LOCALAPPDATA\Composer\cache", "$env:LOCALAPPDATA\go-build")
+       Opis = 'Pobrane paczki npm/pip/yarn/uv/NuGet/Composer i cache Go. Pobiorą się ponownie przy następnej instalacji.' }
+    @{ Id = 'apki'; Nazwa = 'Cache aplikacji'; Grupy = $grupyAplikacji
+       Sciezki = @($grupyAplikacji | ForEach-Object { $_.Sciezki })
+       Opis = "Tylko cache, konta i ustawienia zostają. Uruchomione aplikacje są pomijane. Znalezione: $(if ($grupyAplikacji) { ($grupyAplikacji | ForEach-Object { $_.Nazwa }) -join ', ' } else { 'brak' })." }
+    @{ Id = 'sterowniki'; Nazwa = 'Stare instalatory sterowników (NVIDIA, AMD)'
+       Sciezki = @('C:\NVIDIA', 'C:\AMD', "$env:ProgramData\NVIDIA Corporation\Downloader")
+       Opis = 'Rozpakowane i pobrane instalatory sterowników. Zainstalowany sterownik działa bez nich.' }
     @{ Id = 'shadery'; Nazwa = 'Cache shaderów GPU (NVIDIA, DirectX)'
        Sciezki = @("$env:LOCALAPPDATA\NVIDIA\DXCache", "$env:LOCALAPPDATA\NVIDIA\GLCache", "$env:LOCALAPPDATA\D3DSCache")
        Opis = 'Skompilowane shadery. Pierwsze uruchomienie gier po czyszczeniu może się dłużej ładować.' }
@@ -230,6 +288,9 @@ $Kategorie = @(
        Opis = 'Podglądy zdjęć i ikon w Eksploratorze. Wymaga restartu Eksploratora (pasek zadań zniknie na kilka sekund).' }
     @{ Id = 'dns'; Nazwa = 'Cache DNS'; Typ = 'dns'
        Opis = 'Zapamiętane adresy stron. Nie zwalnia miejsca, pomaga przy problemach z siecią.' }
+    @{ Id = 'winold'; Nazwa = 'Poprzednia wersja Windows (Windows.old)'; Typ = 'winold'; TylkoRecznie = $true
+       Sciezki = @('C:\Windows.old', 'C:\$WINDOWS.~BT', 'C:\$WINDOWS.~WS')
+       Opis = 'Kopia systemu sprzed dużej aktualizacji, zwykle 10-30 GB. Po usunięciu nie da się wrócić do poprzedniej wersji Windows.' }
     @{ Id = 'dism'; Nazwa = 'Magazyn komponentów WinSxS (DISM)'; Typ = 'dism'; TylkoRecznie = $true
        Opis = 'Usuwa zastąpione wersje komponentów Windows, zwykle 1-3 GB. Trwa kilka minut. Potem nie da się odinstalować wcześniejszych aktualizacji.' }
 )
@@ -253,7 +314,7 @@ function SkanujKategorie {
     foreach ($k in $Kategorie) {
         Write-Host ("   {0}..." -f $k.Nazwa) -ForegroundColor DarkGray
         switch ($k.Typ) {
-            'folder' { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
+            { $_ -in 'folder', 'winold' } { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
             'kosz' {
                 $b = 0.0
                 foreach ($d in DyskiStale) { $b += (Zmierz @("$($d.DeviceID)\`$Recycle.Bin")).Bajty }
@@ -713,6 +774,45 @@ użytkownik numerami. Jeśli chce usunąć coś spoza planu, wyjaśnij, jak zrob
 (np. odinstalowanie programu w Ustawieniach). Używaj tylko liczb z raportu. Jeśli czegoś nie wiesz, powiedz to wprost.
 '@
 
+# ---------- AKTUALIZACJE ----------
+# Jedno zapytanie do GitHuba przy starcie (bez danych o komputerze); wylacza je -BezAktualizacji.
+$Repo = 'Banzamel/LLMCleaner'
+$script:Aktualizacja = $null
+
+function SprawdzAktualizacje {
+    try {
+        $r = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 4 -ErrorAction Stop `
+             -Headers @{ 'User-Agent' = "LLMCleaner/$Wersja" }
+        $nowa = [version]($r.tag_name.TrimStart('v'))
+        if ($nowa -le [version]$Wersja) { return }
+        $setup = $r.assets | Where-Object { $_.name -like 'LLMCleaner-Setup-*.exe' } | Select-Object -First 1
+        $script:Aktualizacja = @{ Wersja = "$nowa"; Strona = $r.html_url; Instalator = $setup.browser_download_url; Nazwa = $setup.name }
+        Log "Dostepna aktualizacja: $nowa"
+    }
+    catch { Log "Sprawdzanie aktualizacji: $($_.Exception.Message)" }
+}
+
+# Pobiera instalator i uruchamia go jako zwykly uzytkownik (przez Eksplorator), zeby
+# aktualizacja trafila w ten sam tryb instalacji co poprzednio. Zwraca $true, gdy wystartowal.
+function ZainstalujAktualizacje {
+    $a = $script:Aktualizacja
+    $zainstalowany = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'unins000.exe')
+    if (-not $zainstalowany -or -not $a.Instalator) {
+        Write-Host "   Wersja portable - pobierz nową wersję ze strony: $($a.Strona)" -ForegroundColor Yellow
+        return $false
+    }
+    $plik = Join-Path $env:TEMP $a.Nazwa
+    Write-Host "   Pobieram $($a.Nazwa)..." -ForegroundColor Gray
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest $a.Instalator -OutFile $plik -UseBasicParsing -ErrorAction Stop
+    }
+    catch { Write-Host "   Nie udało się pobrać: $($_.Exception.Message)" -ForegroundColor Yellow; return $false }
+    Log "Aktualizacja: uruchamiam $plik"
+    Start-Process explorer.exe -ArgumentList "`"$plik`""
+    $true
+}
+
 # ---------- START ----------
 Clear-Host
 Write-Host ""
@@ -721,6 +821,13 @@ Write-Host "   $(Get-Date -Format 'dd.MM.yyyy HH:mm')   asystent: $(if ($BezLLM)
 if ($Podglad) { Write-Host "   TRYB PODGLĄDU - nic nie zostanie usunięte" -ForegroundColor Yellow }
 Write-Host ""
 Log "Start. Model: $Model, Podglad: $Podglad, BezLLM: $BezLLM"
+if (-not $BezAktualizacji) {
+    SprawdzAktualizacje
+    if ($script:Aktualizacja) {
+        Write-Host "   Dostępna nowa wersja $($script:Aktualizacja.Wersja) - klawisz u na ekranie planu ją zainstaluje." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
 
 $wolnePrzed = WolneC
 Naglowek "1/2  Skanowanie"
@@ -755,7 +862,7 @@ function RaportJson {
         dyski = $dysk.Dyski
         kategorie = @($Kategorie | ForEach-Object {
             @{ id = $_.Id; nazwa = $_.Nazwa; opis = $_.Opis; zaznaczona = [bool]$_.Wybrana
-               rozmiar = $(if ($_.Typ -in 'folder', 'kosz', 'miniatury') { Rozmiar $_.Bajty } else { 'nie dotyczy' })
+               rozmiar = $(if ($_.Typ -in 'folder', 'kosz', 'miniatury', 'winold') { Rozmiar $_.Bajty } else { 'nie dotyczy' })
                tylko_recznie = [bool]$_.TylkoRecznie; blokada = $_.Blokada } })
         pozostalosci = @($Pozostalosci | ForEach-Object {
             @{ id = $_.Id; typ = $_.Typ; sciezka = $_.Sciezka; zaznaczona = [bool]$_.Wybrana
@@ -766,6 +873,9 @@ function RaportJson {
         duze_foldery_appdata = $dysk.AppData
         najwieksze_programy = $dysk.Programy
         system = $dysk.System
+        analiza_dyskow = @($script:Analizy.Values | ForEach-Object {
+            @{ dysk = "$($_.Litera):"; pozycje = @(@($_.Foldery) + @($_.Pliki) | ForEach-Object {
+                @{ sciezka = $_.Sciezka; rozmiar = (Rozmiar $_.Bajty); podpowiedz = $_.Podpowiedz; czym_jest = $_.Ai } }) } })
     }
     ConvertTo-Json -InputObject $raport -Depth 10 -Compress
 }
@@ -778,7 +888,7 @@ function PokazPlan {
         $i++
         $znak = if ($k.Wybrana) { '[x]' } else { '[ ]' }
         $kolor = if ($k.Wybrana) { 'Green' } elseif ($k.TylkoRecznie) { 'Gray' } else { 'DarkGray' }
-        $roz = if ($k.Typ -in 'folder', 'kosz', 'miniatury') { Rozmiar $k.Bajty } else { '-' }
+        $roz = if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold') { Rozmiar $k.Bajty } else { '-' }
         Write-Host ("  {0} {1,2}. {2,-52} {3,10}" -f $znak, $i, $k.Nazwa, $roz) -ForegroundColor $kolor
         if ($k.Blokada) { Write-Host "           ! $($k.Blokada)" -ForegroundColor Yellow }
         else { Write-Host "           $(if ($k.TylkoRecznie) { '(tylko na Twoje życzenie) ' })$($k.Opis)" -ForegroundColor DarkGray }
@@ -843,6 +953,251 @@ function Czat {
     }
 }
 
+# ---------- ANALIZA DYSKU: CO ZAJMUJE MIEJSCE ----------
+# Tylko do wgladu - nic stad nie trafia do planu. Skaner w C#, bo petla w PowerShellu
+# przechodzi milion plikow kilka minut. Nie wchodzi w junctions/symlinki, pomija pliki
+# tylko w chmurze (OneDrive). Twarde linki (WinSxS) sa liczone wielokrotnie, jak w Eksploratorze.
+
+$script:Analizy = @{}
+
+function KompilujSkaner {
+    if ('LlmSkaner' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+public class LlmFolder { public string Sciezka; public long Bajty; public long Pliki; public DateTime Ostatnio; }
+public class LlmPlik { public string Sciezka; public long Bajty; public DateTime Ostatnio; }
+public class LlmWynik { public List<LlmFolder> Foldery = new List<LlmFolder>(); public List<LlmPlik> Pliki = new List<LlmPlik>(); public long Bajty; public long LiczbaPlikow; public int Odmowy; }
+public static class LlmSkaner {
+    static long licznik;
+    public static long Licznik { get { return Interlocked.Read(ref licznik); } }
+    const FileAttributes Chmura = (FileAttributes)0x400000 | (FileAttributes)0x40000 | FileAttributes.Offline;
+    public static Task<LlmWynik> Start(string root, int maxGlebokosc, long minFolder, long minPlik) {
+        Interlocked.Exchange(ref licznik, 0);
+        return Task.Run(() => {
+            var w = new LlmWynik(); long n; DateTime o;
+            w.Bajty = Skanuj(new DirectoryInfo(root), 0, maxGlebokosc, minFolder, minPlik, w, out n, out o);
+            w.LiczbaPlikow = n;
+            return w;
+        });
+    }
+    static long Skanuj(DirectoryInfo d, int gl, int maxGl, long minFolder, long minPlik, LlmWynik w, out long pliki, out DateTime ostatnio) {
+        long suma = 0; pliki = 0; ostatnio = DateTime.MinValue;
+        FileSystemInfo[] el;
+        try { el = d.GetFileSystemInfos(); } catch { w.Odmowy++; return 0; }
+        foreach (var e in el) {
+            try {
+                if ((e.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                var sd = e as DirectoryInfo;
+                if (sd != null) {
+                    long p; DateTime o;
+                    suma += Skanuj(sd, gl + 1, maxGl, minFolder, minPlik, w, out p, out o);
+                    pliki += p; if (o > ostatnio) ostatnio = o;
+                    continue;
+                }
+                var f = (FileInfo)e;
+                if ((f.Attributes & Chmura) != 0) continue;
+                long b = f.Length; DateTime t = f.LastWriteTime;
+                suma += b; pliki++; Interlocked.Increment(ref licznik);
+                if (t > ostatnio) ostatnio = t;
+                if (b >= minPlik) w.Pliki.Add(new LlmPlik { Sciezka = f.FullName, Bajty = b, Ostatnio = t });
+            } catch { }
+        }
+        if (gl >= 1 && gl <= maxGl && suma >= minFolder)
+            w.Foldery.Add(new LlmFolder { Sciezka = d.FullName, Bajty = suma, Pliki = pliki, Ostatnio = ostatnio });
+        return suma;
+    }
+}
+'@
+}
+
+# Znane miejsca - podpowiedz bez modelu
+$ZnaneMiejsca = @(
+    @{ W = '\\Windows\\WinSxS$'; P = 'Magazyn komponentów Windows. Zmniejsza go tylko DISM (kategoria w planie); rozmiar zawyżony przez twarde linki.' }
+    @{ W = '\\Windows\\Installer$'; P = 'Pamięć instalatorów MSI - nie usuwaj ręcznie, psuje odinstalowywanie programów.' }
+    @{ W = '\\Windows\\SoftwareDistribution$'; P = 'Aktualizacje Windows - kategoria „Cache Windows Update” w planie.' }
+    @{ W = '\\Windows\\System32\\DriverStore'; P = 'Magazyn sterowników (tu: sterownik karty graficznej). Nie usuwaj ręcznie.' }
+    @{ W = '\\Windows\\servicing'; P = 'Pliki obsługi aktualizacji Windows - zarządza nimi system.' }
+    @{ W = '\\Windows\.old$'; P = 'Poprzednia wersja Windows - kategoria w planie.' }
+    @{ W = '^[A-Z]:\\pagefile\.sys$'; P = 'Plik stronicowania (pamięć wirtualna). Rozmiar ustawia się w Ustawieniach systemu.' }
+    @{ W = '^[A-Z]:\\hiberfil\.sys$'; P = 'Hibernacja i szybkie uruchamianie. „powercfg /h off” usuwa go, ale wyłącza hibernację.' }
+    @{ W = '^[A-Z]:\\swapfile\.sys$'; P = 'Plik wymiany aplikacji ze Sklepu - zarządza nim Windows.' }
+    @{ W = '\\steamapps\\common\\[^\\]+$'; P = 'Gra ze Steama - odinstaluj ją w Steamie.' }
+    @{ W = '\\steamapps\\(workshop|shadercache|downloading)'; P = 'Dane Steama (Workshop, shadery, pobieranie).' }
+    @{ W = '\\Epic Games\\[^\\]+$'; P = 'Gra z Epic Games - odinstaluj ją w launcherze Epic.' }
+    @{ W = '\\swap\.vhdx$'; P = 'Plik wymiany WSL - znika po „wsl --shutdown”.' }
+    @{ W = '\\AppData\\Local\\Temp(\\[^\\]+)?$'; P = 'Pliki tymczasowe - kategoria TEMP w planie (pliki w użyciu są pomijane).' }
+    @{ W = '(ext4|docker_data)\.vhdx$|DockerDesktopWSL|\\Docker\\wsl'; P = 'Dysk WSL/Docker. Miejsce zwalnia „docker system prune”, a potem kompaktowanie dysku VHDX.' }
+    @{ W = '\\AppData\\Local\\Packages\\[^\\]+$'; P = 'Dane aplikacji ze Sklepu Microsoft - wyczyść lub odinstaluj w Ustawieniach > Aplikacje.' }
+    @{ W = '\\node_modules$'; P = 'Zależności projektu Node.js - „npm install” odtworzy je w razie potrzeby.' }
+    @{ W = '\\\.(gradle|m2|nuget|cargo|rustup)$'; P = 'Cache narzędzi programistycznych.' }
+    @{ W = '\\(Downloads|Pobrane)$'; P = 'Pobrane pliki - często stare instalatory i archiwa.' }
+    @{ W = '\\LLMCleaner\\ai$'; P = 'Silnik AI i modele LLMCleanera.' }
+    @{ W = '\.(iso|vhdx?|vmdk|qcow2)$'; P = 'Obraz dysku lub maszyny wirtualnej.' }
+)
+function Podpowiedz([string]$s) { foreach ($z in $ZnaneMiejsca) { if ($s -match $z.W) { return $z.P } }; $null }
+
+function SkanujDyskAnaliza([string]$litera) {
+    KompilujSkaner
+    $d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$litera`:'"
+    $zajete = [double]$d.Size - [double]$d.FreeSpace
+    $prog = if ($zajete -gt 1TB) { 2GB } else { 1GB }
+    $zegar = [Diagnostics.Stopwatch]::StartNew()
+    $zadanie = [LlmSkaner]::Start("$litera`:\", 6, $prog, 1GB)
+    while (-not $zadanie.Wait(500)) {
+        Write-Host ("`r   przejrzano {0:N0} plików ({1:N0} s)..." -f [LlmSkaner]::Licznik, $zegar.Elapsed.TotalSeconds) -NoNewline -ForegroundColor DarkGray
+    }
+    $w = $zadanie.Result
+    Write-Host ("`r   przejrzano {0:N0} plików w {1:N0} s.                 " -f $w.LiczbaPlikow, $zegar.Elapsed.TotalSeconds) -ForegroundColor DarkGray
+
+    # Najbardziej konkretne duze foldery: bez duzego podfolderu, albo z duza "reszta" poza nimi
+    $wg = @{}; foreach ($f in $w.Foldery) { $wg[$f.Sciezka] = $f }
+    $duzeDzieci = @{}
+    foreach ($f in $w.Foldery) {
+        $rodzic = [IO.Path]::GetDirectoryName($f.Sciezka)
+        if ($rodzic -and $wg.ContainsKey($rodzic)) { $duzeDzieci[$rodzic] += [double]$f.Bajty }
+    }
+    $pozycje = New-Object System.Collections.Generic.List[object]
+    foreach ($f in $w.Foldery) {
+        $dzieci = [double]$duzeDzieci[$f.Sciezka]
+        if ($dzieci -eq 0) { $b = [double]$f.Bajty; $reszta = $false }
+        elseif ($f.Bajty - $dzieci -ge $prog) { $b = $f.Bajty - $dzieci; $reszta = $true }
+        else { continue }
+        $pozycje.Add(@{ Typ = 'folder'; Sciezka = $f.Sciezka; Bajty = $b; Reszta = $reszta; Pliki = $f.Pliki
+                        Ostatnio = $f.Ostatnio; Podpowiedz = (Podpowiedz $f.Sciezka) })
+    }
+    $foldery = @($pozycje | Sort-Object { $_.Bajty } -Descending | Select-Object -First 20)
+    $pliki = @($w.Pliki | Sort-Object Bajty -Descending | Select-Object -First 10 | ForEach-Object {
+        @{ Typ = 'plik'; Sciezka = $_.Sciezka; Bajty = [double]$_.Bajty; Ostatnio = $_.Ostatnio; Podpowiedz = (Podpowiedz $_.Sciezka) } })
+
+    # Punkty przywracania i kopie w tle - niewidoczne dla skanera (System Volume Information)
+    $cienie = 0.0
+    $wol = Get-CimInstance Win32_Volume | Where-Object { $_.DriveLetter -eq "$litera`:" } | Select-Object -First 1
+    foreach ($s in Get-CimInstance Win32_ShadowStorage) { if ($wol -and $s.Volume.DeviceID -eq $wol.DeviceID) { $cienie += [double]$s.UsedSpace } }
+
+    $i = 0
+    foreach ($p in @($foldery) + @($pliki)) { $i++; $p.Id = "A$i" }
+    Log ("Analiza {0}: {1:N0} plikow, {2} folderow, {3} plikow >1GB, odmowy dostepu: {4}" -f $litera, $w.LiczbaPlikow, $foldery.Count, $pliki.Count, $w.Odmowy)
+    @{ Litera = $litera; Rozmiar = [double]$d.Size; Wolne = [double]$d.FreeSpace; Zeskanowane = [double]$w.Bajty
+       Foldery = $foldery; Pliki = $pliki; Cienie = $cienie; Prog = $prog }
+}
+
+function PokazAnalize($a) {
+    Naglowek ("CO ZAJMUJE MIEJSCE NA {0}:   zajęte {1} z {2}, wolne {3}" -f $a.Litera, (Rozmiar ($a.Rozmiar - $a.Wolne)), (Rozmiar $a.Rozmiar), (Rozmiar $a.Wolne))
+    Write-Host "   Tylko do wglądu - nic stąd nie jest usuwane. Pokazane są najbardziej konkretne foldery od $(Rozmiar $a.Prog)." -ForegroundColor DarkGray
+    $sekcje = @(@{ T = 'NAJWIĘKSZE FOLDERY'; L = $a.Foldery }, @{ T = 'NAJWIĘKSZE PLIKI'; L = $a.Pliki })
+    foreach ($s in $sekcje) {
+        if (-not $s.L.Count) { continue }
+        Write-Host ""
+        Write-Host "   $($s.T)" -ForegroundColor Cyan
+        foreach ($p in $s.L) {
+            $dop = if ($p.Reszta) { '  (pliki poza wymienionymi podfolderami)' } else { '' }
+            $data = if ($p.Ostatnio -gt [datetime]'1980-01-01') { $p.Ostatnio.ToString('yyyy-MM-dd') } else { '          ' }
+            Write-Host ("  {0,4}. {1,10}  {2}  {3}{4}" -f $p.Id, (Rozmiar $p.Bajty), $data, $p.Sciezka, $dop) -ForegroundColor Gray
+            if ($p.Podpowiedz) { Write-Host "                            $($p.Podpowiedz)" -ForegroundColor DarkGray }
+            if ($p.Ai) { Write-Host "                            AI (może się mylić): $($p.Ai)" -ForegroundColor DarkCyan }
+        }
+    }
+    if ($a.Cienie -gt 0) {
+        Write-Host ""
+        Write-Host ("   Punkty przywracania systemu: {0} (Ochrona systemu w Ustawieniach)" -f (Rozmiar $a.Cienie)) -ForegroundColor Gray
+    }
+    $niewidoczne = ($a.Rozmiar - $a.Wolne) - $a.Zeskanowane - $a.Cienie
+    if ($niewidoczne -gt 2GB) {
+        Write-Host ("   Niedostępne dla skanera (pliki systemowe, chronione foldery): ok. {0}" -f (Rozmiar $niewidoczne)) -ForegroundColor DarkGray
+    }
+}
+
+# Model wybiera rade tylko z tej listy (enum w schemacie) - nie moze doradzic recznego usuwania
+$Rady = @('zostaw - część systemu', 'odinstaluj w Ustawieniach > Aplikacje', 'odinstaluj grę w jej launcherze',
+          'wyczyść w ustawieniach programu', 'przejrzyj i przenieś na inny dysk', 'przejrzyj zawartość ręcznie',
+          'oczyści to kategoria TEMP w planie')
+
+# Foldery systemowe, programow i TEMP: rade ustala program, nie model
+function RadaStala([string]$s) {
+    if ($s -match '\\AppData\\Local\\Temp(\\|$)') { return $Rady[6] }
+    if ($s -match '^[A-Z]:\\(Windows|ProgramData)(\\|$)' -or $s -match '^[A-Z]:\\[^\\]+\.sys$') { return $Rady[0] }
+    if ($s -match '^[A-Z]:\\Program Files( \(x86\))?(\\(Microsoft[^\\]*|Windows[^\\]*|Common Files))?$') { return $Rady[0] }
+    if ($s -match '^[A-Z]:\\Program Files( \(x86\))?\\') { return $Rady[1] }
+    $null
+}
+
+$SchematAnalizy = @{
+    type = 'object'
+    properties = @{
+        pozycje = @{ type = 'array'; items = @{ type = 'object'
+            properties = @{ id = @{ type = 'string' }; opis = @{ type = 'string' }; rada = @{ type = 'string'; enum = $Rady } }
+            required = @('id', 'opis', 'rada') } }
+    }
+    required = @('pozycje')
+}
+
+$SysAnaliza = @'
+Jesteś LLMCleaner - asystentem sprzątania Windows. Dostajesz listę największych folderów i plików na dysku
+(ścieżka, rozmiar, data ostatniej zmiany, czasem podpowiedź programu). Dla KAŻDEJ pozycji podaj:
+- "opis": czym to jest (program, gra, dane użytkownika, cache, część systemu) - na podstawie ścieżki i podpowiedzi,
+- "rada": jedna z dozwolonych wartości - co użytkownik może bezpiecznie zrobić.
+Zasady:
+- Wszystko w C:\Windows, C:\ProgramData i plikach .sys to część systemu: rada "zostaw - część systemu".
+- Gry (steamapps, Epic Games) -> "odinstaluj grę w jej launcherze"; programy -> "odinstaluj w Ustawieniach > Aplikacje".
+- Dane użytkownika (dokumenty, projekty, pobrane, nieznane foldery w profilu) -> "przejrzyj zawartość ręcznie"
+  albo "przejrzyj i przenieś na inny dysk".
+- Jeśli jest podpowiedź programu, opis musi być z nią zgodny.
+- Stara data ostatniej zmiany może oznaczać nieużywany program lub grę - możesz o tym wspomnieć w opisie.
+- Nie zmyślaj nazw programów, których nie ma w ścieżce. Jeśli nie wiesz, napisz "nieznane dane".
+- Opis maks. 12 słów, po polsku.
+'@
+
+function AnalizaAi($a) {
+    if (-not (ZapewnijModel)) { return }
+    $lista = @(@($a.Foldery) + @($a.Pliki) | ForEach-Object {
+        @{ id = $_.Id; typ = $_.Typ; sciezka = $_.Sciezka; rozmiar = (Rozmiar $_.Bajty); podpowiedz = $_.Podpowiedz
+           ostatnia_zmiana = $(if ($_.Ostatnio -gt [datetime]'1980-01-01') { $_.Ostatnio.ToString('yyyy-MM-dd') }) } })
+    Write-Host "   Model opisuje $($lista.Count) pozycji (ok. 20-40 s)..." -ForegroundColor DarkGray
+    try {
+        $odp = Ollama @(@{ role = 'system'; content = $SysAnaliza },
+                        @{ role = 'user'; content = (ConvertTo-Json -InputObject $lista -Depth 5 -Compress) }) $SchematAnalizy
+        $n = 0
+        foreach ($w in @(($odp | ConvertFrom-Json -ErrorAction Stop).pozycje)) {
+            $p = @(@($a.Foldery) + @($a.Pliki)) | Where-Object { $_.Id -eq $w.id } | Select-Object -First 1
+            if ($p -and $w.opis) {
+                $rada = RadaStala $p.Sciezka
+                if (-not $rada) { $rada = if ($w.rada -in $Rady) { $w.rada } else { $Rady[5] } }
+                $p.Ai = "$($w.opis.Trim().TrimEnd('.;')). Rada: $rada."; $n++
+            }
+        }
+        Write-Host "   Gotowe - opisano $n pozycji." -ForegroundColor Green
+        Log "Analiza - opisy modelu: $odp"
+    }
+    catch { Write-Host "   Błąd modelu: $($_.Exception.Message)" -ForegroundColor Yellow }
+}
+
+function Analiza {
+    $dyski = @(DyskiStale)
+    Write-Host ""
+    Write-Host ("   Dyski: " + (($dyski | ForEach-Object { "{0} (wolne {1} z {2})" -f $_.DeviceID, (Rozmiar $_.FreeSpace), (Rozmiar $_.Size) }) -join ', ')) -ForegroundColor Gray
+    $l = (Read-Host "   Który dysk przeanalizować? [C]").Trim().TrimEnd(':', '\').ToUpper()
+    if (-not $l) { $l = 'C' }
+    if (-not ($dyski | Where-Object { $_.DeviceID -eq "$l`:" })) { Write-Host "   Nie ma dysku $l`:." -ForegroundColor Yellow; return }
+    if (-not $script:Analizy.ContainsKey($l)) {
+        Write-Host "   Skanuję dysk $l`: (zwykle 30 s - 3 min)..." -ForegroundColor DarkGray
+        $script:Analizy[$l] = SkanujDyskAnaliza $l
+    }
+    $a = $script:Analizy[$l]
+    while ($true) {
+        PokazAnalize $a
+        Write-Host ""
+        $pomoc = if ($BezLLM) { 'Enter = powrót do planu' } else { 'w = AI opisze te pozycje i doradzi | Enter = powrót do planu' }
+        Write-Host "   $pomoc" -ForegroundColor Yellow
+        $w = (Read-Host "   Wybór").Trim()
+        if ($w -match '^[wW]$' -and -not $BezLLM) { AnalizaAi $a; continue }
+        return
+    }
+}
+
 # Ostatnie podsumowanie przed czyszczeniem. Zwraca $true, gdy uzytkownik potwierdzi.
 function Potwierdz {
     $wybrane = @($Kategorie | Where-Object { $_.Wybrana })
@@ -855,7 +1210,7 @@ function Potwierdz {
     if ($wybrane.Count) {
         Write-Host "   Zostanie wyczyszczone:" -ForegroundColor White
         foreach ($k in $wybrane) {
-            $roz = if ($k.Typ -in 'folder', 'kosz', 'miniatury') { Rozmiar $k.Bajty } elseif ($k.Typ -eq 'dns') { '-' } else { 'nieznane' }
+            $roz = if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold') { Rozmiar $k.Bajty } elseif ($k.Typ -eq 'dns') { '-' } else { 'nieznane' }
             Write-Host ("     - {0,-52} {1,10}" -f $k.Nazwa, $roz) -ForegroundColor Gray
         }
         $suma = ($wybrane | ForEach-Object { [double]$_.Bajty } | Measure-Object -Sum).Sum
@@ -880,7 +1235,7 @@ function Potwierdz {
             Write-Host ("   Do Kosza            : {0} ({1}) - miejsce zwolni się po opróżnieniu Kosza" -f $doKosza.Count, (Rozmiar $sp)) -ForegroundColor Gray
         }
         if ($pozRejestr.Count) {
-            Write-Host ("   Klucze rejestru     : {0} - kopia .reg w logs\kopie_rejestru" -f $pozRejestr.Count) -ForegroundColor Gray
+            Write-Host ("   Klucze rejestru     : {0} - kopia .reg w logs\kopie_rejestru + punkt przywracania systemu" -f $pozRejestr.Count) -ForegroundColor Gray
         }
     }
 
@@ -888,6 +1243,7 @@ function Potwierdz {
     if ($wybrane | Where-Object { $_.Id -eq 'kosz' }) { $uwagi += 'Kosz zostanie opróżniony NIEODWRACALNIE (przed przeniesieniem pozostałości).' }
     if ($wybrane | Where-Object { $_.Typ -eq 'miniatury' }) { $uwagi += 'Eksplorator zostanie zrestartowany - pasek zadań zniknie na kilka sekund.' }
     if ($wybrane | Where-Object { $_.Typ -eq 'dism' }) { $uwagi += 'DISM potrwa kilka minut; potem nie odinstalujesz starszych aktualizacji.' }
+    if ($wybrane | Where-Object { $_.Typ -eq 'winold' }) { $uwagi += 'Po usunięciu Windows.old nie da się wrócić do poprzedniej wersji Windows.' }
     if ($wybrane | Where-Object { $_.Procesy }) { $uwagi += 'Nie otwieraj przeglądarki w trakcie czyszczenia.' }
     if ($wybranePoz | Where-Object { $_.Pewnosc -eq 'niska' }) { $uwagi += 'Zaznaczono pozycje o niskiej pewności (zapisy gier / duże pliki) - upewnij się, że ich nie potrzebujesz.' }
     if ($uwagi.Count) {
@@ -908,6 +1264,8 @@ while ($true) {
     $pomoc = if ($Podglad) { 'Enter = zakończ' } else { 'Enter = dalej (podsumowanie i pytanie o czyszczenie)' }
     $pomoc += ' | numery (np. 3 7) = zaznacz/odznacz'
     if (-not $BezLLM) { $pomoc += ' | w = AI wyjaśni pozostałości | p = zapytaj asystenta' }
+    $pomoc += ' | a = co zajmuje miejsce na dysku'
+    if ($script:Aktualizacja) { $pomoc += " | u = zainstaluj wersję $($script:Aktualizacja.Wersja)" }
     $pomoc += ' | q = wyjdź'
     Write-Host "   $pomoc" -ForegroundColor Yellow
     $w = (Read-Host "   Wybór").Trim()
@@ -919,6 +1277,14 @@ while ($true) {
     if ($w -match '^[qQ]') { Log 'Przerwano przez uzytkownika.'; Write-Host "`n   Przerwano - nic nie zostało usunięte.`n"; ZatrzymajOllama; Read-Host "   Enter kończy"; exit }
     if ($w -match '^[pP]$') { Czat; continue }
     if ($w -match '^[wW]$') { Wyjasnij; continue }
+    if ($w -match '^[aA]$') { Analiza; continue }
+    if ($w -match '^[uU]$' -and $script:Aktualizacja) {
+        if (ZainstalujAktualizacje) {
+            Write-Host "`n   Instalator aktualizacji uruchomiony - LLMCleaner kończy pracę, nic nie zostało usunięte.`n" -ForegroundColor Green
+            ZatrzymajOllama; Start-Sleep -Seconds 3; exit
+        }
+        continue
+    }
     foreach ($n in ($w -split '[\s,;]+')) {
         $idx = 0
         if ([int]::TryParse($n, [ref]$idx) -and $idx -ge 1 -and $idx -le $Kategorie.Count) {
@@ -956,11 +1322,19 @@ foreach ($k in ($Kategorie | Where-Object { $_.Wybrana })) {
         Log "$($k.Id): pominieto - dziala przegladarka"
         continue
     }
+    $pominieteAplikacje = @()
     switch ($k.Typ) {
         'folder' {
             foreach ($u in $k.Uslugi) { Stop-Service $u -Force }
             if ($k.Uslugi) { Start-Sleep -Seconds 2 }
-            foreach ($s in $k.Sciezki) {
+            $sciezki = $k.Sciezki
+            if ($k.Grupy) {
+                $sciezki = @()
+                foreach ($g in $k.Grupy) {
+                    if (Get-Process $g.Procesy) { $pominieteAplikacje += $g.Nazwa } else { $sciezki += $g.Sciezki }
+                }
+            }
+            foreach ($s in $sciezki) {
                 $r = UsunZawartosc $s ([int]$k.MinWiek)
                 $zysk += $r.Bajty; $bledy += $r.Bledy
             }
@@ -975,6 +1349,13 @@ foreach ($k in ($Kategorie | Where-Object { $_.Wybrana })) {
             Start-Sleep -Seconds 2
         }
         'dns' { ipconfig /flushdns | Out-Null }
+        'winold' {
+            Write-Host "  Oczyszczanie dysku Windows usuwa poprzednią wersję systemu - to potrwa kilka minut..." -ForegroundColor Gray
+            $przed = WolneC
+            UsunPoprzedniWindows
+            $bledy = @($k.Sciezki | Where-Object { Test-Path -LiteralPath $_ }).Count
+            $zysk = [math]::Max(0, (WolneC) - $przed)
+        }
         'dism' {
             Write-Host "  DISM pracuje - to potrwa kilka minut..." -ForegroundColor Gray
             $przed = WolneC
@@ -986,6 +1367,7 @@ foreach ($k in ($Kategorie | Where-Object { $_.Wybrana })) {
     $suma += $zysk
     $kolor = if ($zysk -gt 50MB) { 'Green' } else { 'Gray' }
     $dop = if ($bledy) { "  ($bledy w użyciu, pominięte)" } else { '' }
+    if ($pominieteAplikacje) { $dop += "  (pominięto - działa: $($pominieteAplikacje -join ', '))"; Log "$($k.Id): pominieto dzialajace $($pominieteAplikacje -join ', ')" }
     Write-Host ("  {0,-52} {1,10}{2}" -f $k.Nazwa, (Rozmiar $zysk), $dop) -ForegroundColor $kolor
     Log ("{0}: {1} zwolnione, {2} pominietych" -f $k.Id, (Rozmiar $zysk), $bledy)
 }
@@ -996,6 +1378,12 @@ if ($wybranePoz.Count) {
     Write-Host ""
     Write-Host "  Pozostałości po odinstalowanych programach i grach:" -ForegroundColor Cyan
     $kopie = Join-Path $LogDir ("kopie_rejestru\{0}" -f (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
+    if (@($wybranePoz | Where-Object { $_.Typ -eq 'rejestr' }).Count) {
+        Write-Host "  Tworzę punkt przywracania systemu (do 30 s)..." -ForegroundColor Gray
+        $pp = PunktPrzywracania
+        Write-Host "  Punkt przywracania: $($pp.Opis)" -ForegroundColor $(if ($pp.Ok) { 'Green' } else { 'Yellow' })
+        Log "Punkt przywracania: $($pp.Opis)"
+    }
     foreach ($p in $wybranePoz) {
         try {
             if ($p.Typ -eq 'folder') {

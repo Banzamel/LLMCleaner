@@ -61,6 +61,16 @@ jobs:
           Compress-Archive -Path $tmp -DestinationPath "dist\LLMCleaner-$v-portable.zip"
           Get-ChildItem dist | ForEach-Object { "{0}  {1:N0} KB" -f $_.Name, ($_.Length / 1KB) }
 
+      - name: Extract release notes
+        if: github.ref_type == 'tag'
+        shell: powershell
+        run: |
+          $v = [regex]::Escape('${{ steps.version.outputs.version }}')
+          $log = [IO.File]::ReadAllText('CHANGELOG.md')
+          $m = [regex]::Match($log, "(?ms)^## $v\b.*?\r?\n(.*?)(?=^## |\z)")
+          if (-not $m.Success) { Write-Host "::error::CHANGELOG.md has no section for $v"; exit 1 }
+          [IO.File]::WriteAllText("$pwd\release-notes.md", $m.Groups[1].Value.Trim())
+
       - uses: actions/upload-artifact@v4
         with:
           name: LLMCleaner-${{ steps.version.outputs.version }}
@@ -71,5 +81,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: LLMCleaner ${{ steps.version.outputs.version }}
-          body_path: CHANGELOG.md
+          body_path: release-notes.md
           files: dist/*

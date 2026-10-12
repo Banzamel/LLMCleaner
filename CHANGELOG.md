@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0 (2026-10-12)
+
+- **What takes up space** (`a` on the plan screen): a fast scan of any drive lists the most specific large folders and
+  the largest files with built-in hints. `w` lets the AI describe them and suggest what to do. The advice comes from a
+  fixed list of safe options, and for system and program folders the program sets it. The view is read-only.
+- New cleanup categories:
+  - app caches: Discord, Slack, Teams, VS Code, Spotify, Steam and JetBrains IDEs, each skipped while it is running,
+  - old NVIDIA and AMD driver installers,
+  - the previous Windows version (`Windows.old`, `$WINDOWS.~BT`), removed through Windows Disk Cleanup and never
+    preselected,
+  - Composer and Go build caches in the developer category.
+- A System Restore point is created before registry keys are deleted, in addition to the `.reg` backups.
+- Update check at start (GitHub Releases); `u` downloads and runs the new installer. Disable it with `-BezAktualizacji`.
+
 ## 1.0.0 (2026-10-12)
 
 First public release.

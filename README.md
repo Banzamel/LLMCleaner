@@ -7,7 +7,8 @@
 **Smart Windows cleanup with a local AI assistant.** LLMCleaner finds junk files, caches and leftovers of uninstalled
 programs and games, shows you a plan with exact sizes, and cleans only after you confirm. An optional local AI model
 explains what the leftovers were and answers your questions. The AI engine ([Ollama](https://ollama.com)) is bundled
-in the program folder, so everything runs on your machine and nothing is sent to the internet.
+in the program folder, so everything runs on your machine. The only network request is an optional update check
+against GitHub Releases (disable it with `-BezAktualizacji`).
 
 > The program interface is in **Polish**. This README is in English.
 
@@ -19,7 +20,15 @@ in the program folder, so everything runs on your machine and nothing is sent to
   with the space to be freed, and confirm with `t` (yes). The default answer is *no*.
 - **Whitelist-based cleanup** of things that rebuild themselves: temp files, Windows Update cache, crash dumps,
   browser caches (Chrome, Edge, Brave, Firefox: all profiles; passwords, bookmarks and sessions are kept),
-  npm/pip/yarn/uv/NuGet caches, GPU shader caches, thumbnails, DNS cache, and optionally DISM and the Docker build cache.
+  npm/pip/yarn/uv/NuGet/Composer/Go caches, GPU shader caches, thumbnails, DNS cache, old NVIDIA/AMD driver installers,
+  app caches (Discord, Slack, Teams, VS Code, Spotify, Steam, JetBrains IDEs; each app is skipped while it is running),
+  and optionally DISM, the previous Windows version (`Windows.old`, removed through Windows Disk Cleanup) and the
+  Docker build cache.
+- **What takes up space (`a`).** A fast scan of any drive (about 45 s for 500,000 files) lists the most specific large
+  folders and the largest files, with built-in hints (WinSxS, hiberfil, WSL disks, Steam games, `node_modules`…). The
+  AI can describe each item and suggest what to do. Its advice comes from a fixed list of safe options, and for
+  `Windows`, `ProgramData` and `Program Files` the advice is set by the program, not by the model. This view is
+  read-only: nothing from it is deleted.
 - **Leftovers of uninstalled software:**
   - folders in `AppData`, `LocalLow`, `ProgramData` and `Program Files` that match no installed program,
   - Steam games removed without cleanup (folders without a manifest, shader caches, Workshop content) and Epic Games leftovers,
@@ -29,13 +38,17 @@ in the program folder, so everything runs on your machine and nothing is sent to
 - **Safe by design:**
   - leftover folders and files go to the **Recycle Bin**,
   - every registry key is **exported to a `.reg` backup** before deletion (double-click the file to restore),
+    and a **System Restore point** is created first,
   - junctions and symlinks are removed as links and never followed,
   - files in use are skipped,
   - save games and large files are never preselected.
 - **AI on demand.** The model never decides what gets deleted and never runs commands. It loads only when you
   ask for it:
   - `w`: describe what each leftover was,
-  - `p`: chat about the plan, folders and programs.
+  - `p`: chat about the plan, folders and programs,
+  - `a` → `w`: describe the largest folders on a drive and suggest what to do.
+- **Updates.** LLMCleaner checks GitHub Releases at start. When a new version is out, `u` downloads and runs its
+  installer.
 
 ## Installation
 
@@ -81,6 +94,7 @@ LLMCleaner.bat              normal run: scan → plan → summary → confirm
 LLMCleaner.bat -Podglad     preview: scan and plan only, nothing is deleted
 LLMCleaner.bat -BezLLM      without the AI assistant
 LLMCleaner.bat -Model qwen3:8b
+LLMCleaner.bat -BezAktualizacji   no update check at start
 ```
 
 ### The plan screen
@@ -91,13 +105,15 @@ LLMCleaner.bat -Model qwen3:8b
 | `3` or `3 7 9` | toggle categories or leftovers by number |
 | `w` | AI describes what each leftover was (marked *AI (może się mylić)*, "AI, may be wrong") |
 | `p` | chat with the assistant; an empty line returns to the plan |
+| `a` | what takes up space on a drive; then `w` lets the AI describe the items |
+| `u` | install the new version (shown only when an update is available) |
 | `q` | quit without deleting anything |
 
 ### What gets preselected
 
 | Item | Rule |
 |---|---|
-| Cleanup categories | 20 MB or more. The Recycle Bin (irreversible), DNS, DISM and Docker are never preselected |
+| Cleanup categories | 20 MB or more. The Recycle Bin (irreversible), DNS, `Windows.old`, DISM and Docker are never preselected |
 | Leftovers, *high* confidence | Steam/Epic leftovers, dead uninstall entries, folders unchanged for 180 days or more |
 | Leftovers, *medium* confidence | folders unchanged for 30–180 days, orphaned registry keys |
 | Leftovers, *low* confidence | save games, large files: **never preselected** |
@@ -145,7 +161,9 @@ about game studios, the model also invented titles. That is why:
 | Browser cache skipped | close the browser (also from the system tray) and run again |
 | Garbled Polish characters | `LLMCleaner.ps1` must be saved as **UTF-8 with BOM** |
 | Taskbar did not come back | `Ctrl+Shift+Esc` → File → Run new task → `explorer.exe` |
-| A registry key was needed after all | double-click its `.reg` file in `logs\kopie_rejestru\` |
+| A registry key was needed after all | double-click its `.reg` file in `logs\kopie_rejestru\`, or use the *LLMCleaner* System Restore point |
+| *pominięty przez Windows - limit jednego punktu na dobę* | Windows creates at most one restore point per 24 hours by default; the `.reg` backups are still made |
+| App cache skipped (*pominięto - działa: …*) | close the app (also from the system tray) and run again |
 
 ## Building from source
 
