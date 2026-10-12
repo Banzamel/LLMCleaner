@@ -16,8 +16,8 @@ against GitHub Releases (disable it with `-BezAktualizacji`).
 
 ## Features
 
-- **Scan first, clean later.** A plan appears about 10 seconds after start. You review it, change it, see a summary
-  with the space to be freed, and confirm with `t` (yes). The default answer is *no*.
+- **Scan first, clean later.** At start you tick the drives to scan. A plan appears about 10 seconds later. You review
+  it, change it, see a summary with the space to be freed, and confirm with `t` (yes). The default answer is *no*.
 - **Whitelist-based cleanup** of things that rebuild themselves: temp files, Windows Update cache, crash dumps,
   browser caches (Chrome, Edge, Brave, Firefox: all profiles; passwords, bookmarks and sessions are kept),
   npm/pip/yarn/uv/NuGet/Composer/Go caches, GPU shader caches, thumbnails, DNS cache, old NVIDIA/AMD driver installers,
@@ -41,7 +41,14 @@ against GitHub Releases (disable it with `-BezAktualizacji`).
     and a **System Restore point** is created first,
   - junctions and symlinks are removed as links and never followed,
   - files in use are skipped,
-  - save games and large files are never preselected.
+  - save games, large files and leftover folders that still contain `.exe` files (possibly portable programs)
+    are never preselected.
+- **Works on other people's PCs too:**
+  - Windows installed on a drive other than `C:` is supported,
+  - moved user folders (Documents in OneDrive, Downloads on another drive) are found through the Windows settings,
+  - on a standard account, where UAC asks for a **different administrator's** password, LLMCleaner still cleans the
+    profile, registry and Recycle Bin of the person who started it, not the administrator's,
+  - the AI installer picks the ARM64 engine on ARM PCs and adds AMD (ROCm) libraries when an AMD GPU is present.
 - **AI on demand.** The model never decides what gets deleted and never runs commands. It loads only when you
   ask for it:
   - `w`: describe what each leftover was,
@@ -95,7 +102,15 @@ LLMCleaner.bat -Podglad     preview: scan and plan only, nothing is deleted
 LLMCleaner.bat -BezLLM      without the AI assistant
 LLMCleaner.bat -Model qwen3:8b
 LLMCleaner.bat -BezAktualizacji   no update check at start
+LLMCleaner.bat -Dyski C,P         scan these drives without asking
 ```
+
+### Drives
+
+LLMCleaner lists local fixed drives with a letter. USB drives, memory cards, network drives and partitions without
+a letter (EFI, Recovery) are skipped, as are BitLocker-locked volumes. All drives are ticked by default; the system
+drive is always scanned (Windows caches, user profile, Program Files). The other ticked drives are used for the
+Recycle Bin, Steam and Epic libraries, and the *what takes up space* view.
 
 ### The plan screen
 
@@ -107,6 +122,8 @@ LLMCleaner.bat -BezAktualizacji   no update check at start
 | `p` | chat with the assistant; an empty line returns to the plan |
 | `a` | what takes up space on a drive; then `w` lets the AI describe the items |
 | `u` | install the new version (shown only when an update is available) |
+
+The first screen asks which drives to scan: `Enter` continues, numbers toggle drives.
 | `q` | quit without deleting anything |
 
 ### What gets preselected

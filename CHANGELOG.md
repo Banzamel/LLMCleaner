@@ -13,6 +13,16 @@
   - Composer and Go build caches in the developer category.
 - A System Restore point is created before registry keys are deleted, in addition to the `.reg` backups.
 - Update check at start (GitHub Releases); `u` downloads and runs the new installer. Disable it with `-BezAktualizacji`.
+- Drive selection at start (or `-Dyski C,P`): the ticked drives are used for the Recycle Bin, Steam and Epic libraries
+  and the disk analysis. The system drive is always scanned.
+- Works on more PCs:
+  - Windows on a drive other than `C:`,
+  - moved user folders (OneDrive, Downloads on another drive),
+  - standard accounts elevated with another administrator's password (the starting user's profile, registry and
+    Recycle Bin are cleaned),
+  - ARM64 and AMD GPU support in the AI installer.
+- Only the current user's Recycle Bin is measured and emptied.
+- Leftover folders that contain `.exe` files get *low* confidence and are not preselected (possible portable programs).
 
 ## 1.0.0 (2026-10-12)
 

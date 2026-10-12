@@ -20,6 +20,7 @@
       -Podglad   tylko skan i plan, nic nie jest usuwane
       -BezLLM    wylacza asystenta (w i p)
       -Model     model Ollama (domyslnie z config.json obok skryptu, inaczej qwen3:4b-instruct)
+      -Dyski     dyski do skanowania, np. -Dyski C,P (bez tego program pyta na starcie)
       -BezAktualizacji  nie sprawdza przy starcie, czy jest nowa wersja na GitHubie
 
     https://github.com/Banzamel/LLMCleaner - licencja MIT
@@ -28,7 +29,9 @@ param(
     [switch]$Podglad,
     [switch]$BezLLM,
     [string]$Model,
-    [switch]$BezAktualizacji
+    [switch]$BezAktualizacji,
+    [string[]]$Dyski,  # np. -Dyski C,P - pomija pytanie o dyski
+    [string]$Sid      # konto, ktore uruchomilo program (ustawia samo podnoszenie uprawnien)
 )
 
 $Wersja = '1.1.0'
@@ -51,11 +54,48 @@ if (-not $adm) {
     if ($Podglad) { $argumenty += '-Podglad' }
     if ($BezLLM) { $argumenty += '-BezLLM' }
     if ($BezAktualizacji) { $argumenty += '-BezAktualizacji' }
+    if ($Dyski) { $argumenty += '-Dyski', ($Dyski -join ',') }
+    # Gdy UAC poprosi o haslo INNEGO konta administratora, skrypt musi wiedziec, czyj profil sprzatac
+    $argumenty += '-Sid', [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argumenty
     exit
 }
 
+# ---------- UZYTKOWNIK ----------
+# Na koncie standardowym UAC prosi o haslo innego konta (administratora) i skrypt dziala wtedy
+# jako ono. Sprzatamy jednak profil osoby, ktora program uruchomila: jej foldery, rejestr i Kosz.
+$mojSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$InnyUzytkownik = $false
+if ($Sid -and $Sid -ne $mojSid) {
+    $profilSid = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$Sid").ProfileImagePath
+    if ($profilSid -and (Test-Path -LiteralPath $profilSid) -and (Test-Path "Registry::HKEY_USERS\$Sid")) {
+        $InnyUzytkownik = $true
+        $env:USERPROFILE = $profilSid
+    }
+}
+$UzytkownikSid = if ($InnyUzytkownik) { $Sid } else { $mojSid }
+$HKCUNazwa = if ($InnyUzytkownik) { "HKEY_USERS\$Sid" } else { 'HKEY_CURRENT_USER' }
+$HKCU = "Registry::$HKCUNazwa"
+
+# Folder powloki uzytkownika (moze byc przeniesiony, np. Dokumenty do OneDrive albo Pobrane na D:)
+function FolderUzytkownika([string]$nazwa, [string]$domyslny) {
+    $v = (Get-ItemProperty "$HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders").$nazwa
+    if ($v) {
+        $v = [Environment]::ExpandEnvironmentVariables($v.Replace('%USERPROFILE%', $env:USERPROFILE))
+        if (Test-Path -LiteralPath $v) { return $v.TrimEnd('\') }
+    }
+    $domyslny
+}
+if ($InnyUzytkownik) {
+    $env:APPDATA = FolderUzytkownika 'AppData' "$env:USERPROFILE\AppData\Roaming"
+    $env:LOCALAPPDATA = FolderUzytkownika 'Local AppData' "$env:USERPROFILE\AppData\Local"
+    $env:TEMP = $env:TMP = "$env:LOCALAPPDATA\Temp"
+}
+
 # ---------- USTAWIENIA ----------
+$Sys = $env:SystemDrive          # zwykle C:, ale Windows moze stac na innym dysku
+$WinDir = $env:windir
+$script:Analizy = @{}    # wyniki analizy dyskow (klawisz a), tez dla czatu
 # Wlasna Ollama w folderze programu (instaluje ja Install-AI.ps1); osobny port, zeby nie
 # kolidowac z Ollama zainstalowana w systemie
 $AiDir = Join-Path $PSScriptRoot 'ai'
@@ -86,7 +126,7 @@ function Rozmiar([double]$b) {
     return '0'
 }
 
-function WolneC { [double](Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'").FreeSpace }
+function WolneC { [double](Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$Sys'").FreeSpace }
 
 # Punkt przywracania systemu przed zmianami w rejestrze (obok kopii .reg). Zwraca opis wyniku.
 function PunktPrzywracania {
@@ -226,7 +266,7 @@ Get-ChildItem "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles" -Directory -Force |
 
 # Cache aplikacji - kazda grupa jest pomijana osobno, gdy jej program dziala
 function CacheElectron($d) { "$d\Cache", "$d\Code Cache", "$d\GPUCache", "$d\DawnCache", "$d\Service Worker\CacheStorage" }
-$steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam').SteamPath
+$steam = (Get-ItemProperty "$HKCU\Software\Valve\Steam").SteamPath
 $grupyAplikacji = @(
     @{ Nazwa = 'Discord'; Procesy = @('discord'); Sciezki = @(CacheElectron "$env:APPDATA\discord") }
     @{ Nazwa = 'Slack'; Procesy = @('slack'); Sciezki = @(CacheElectron "$env:APPDATA\Slack") }
@@ -244,7 +284,7 @@ $grupyAplikacji = @($grupyAplikacji | Where-Object { $_.Sciezki.Count })
 
 $Kategorie = @(
     @{ Id = 'temp'; Nazwa = 'Pliki tymczasowe (TEMP)'; MinWiek = 1
-       Sciezki = @($env:TEMP, 'C:\Windows\Temp')
+       Sciezki = @($env:TEMP, "$WinDir\Temp")
        Opis = 'Pliki tymczasowe programów i instalatorów. Pliki z ostatniej doby są pomijane.' }
     @{ Id = 'inet'; Nazwa = 'Cache internetowy Windows (INetCache)'
        Sciezki = @("$env:LOCALAPPDATA\Microsoft\Windows\INetCache")
@@ -254,17 +294,17 @@ $Kategorie = @(
        Uwagi = 'nieodwracalne' }
     @{ Id = 'wer'; Nazwa = 'Raporty błędów i zrzuty pamięci'
        Sciezki = @("$env:LOCALAPPDATA\Microsoft\Windows\WER",
-                   'C:\ProgramData\Microsoft\Windows\WER\ReportQueue',
-                   'C:\ProgramData\Microsoft\Windows\WER\ReportArchive',
-                   "$env:LOCALAPPDATA\CrashDumps", 'C:\Windows\Minidump', 'C:\Windows\MEMORY.DMP')
+                   "$env:ProgramData\Microsoft\Windows\WER\ReportQueue",
+                   "$env:ProgramData\Microsoft\Windows\WER\ReportArchive",
+                   "$env:LOCALAPPDATA\CrashDumps", "$WinDir\Minidump", "$WinDir\MEMORY.DMP")
        Opis = 'Raporty awarii programów i zrzuty pamięci po bluescreenach. Potrzebne tylko do diagnozy awarii.' }
     @{ Id = 'wu'; Nazwa = 'Cache Windows Update'
-       Sciezki = @('C:\Windows\SoftwareDistribution\Download',
-                   'C:\Windows\SoftwareDistribution\DeliveryOptimization')
+       Sciezki = @("$WinDir\SoftwareDistribution\Download",
+                   "$WinDir\SoftwareDistribution\DeliveryOptimization")
        Uslugi = @('wuauserv', 'bits')
        Opis = 'Pobrane już pliki aktualizacji. Windows pobierze je ponownie, jeśli będą potrzebne.' }
     @{ Id = 'logi'; Nazwa = 'Logi systemowe CBS/DISM (starsze niż 7 dni)'; MinWiek = 7
-       Sciezki = @('C:\Windows\Logs\CBS', 'C:\Windows\Logs\DISM')
+       Sciezki = @("$WinDir\Logs\CBS", "$WinDir\Logs\DISM")
        Opis = 'Logi instalacji komponentów Windows.' }
     @{ Id = 'www'; Nazwa = 'Cache przeglądarek (Chrome, Edge, Brave, Firefox)'
        Sciezki = $cachePrzegladarek
@@ -279,7 +319,7 @@ $Kategorie = @(
        Sciezki = @($grupyAplikacji | ForEach-Object { $_.Sciezki })
        Opis = "Tylko cache, konta i ustawienia zostają. Uruchomione aplikacje są pomijane. Znalezione: $(if ($grupyAplikacji) { ($grupyAplikacji | ForEach-Object { $_.Nazwa }) -join ', ' } else { 'brak' })." }
     @{ Id = 'sterowniki'; Nazwa = 'Stare instalatory sterowników (NVIDIA, AMD)'
-       Sciezki = @('C:\NVIDIA', 'C:\AMD', "$env:ProgramData\NVIDIA Corporation\Downloader")
+       Sciezki = @("$Sys\NVIDIA", "$Sys\AMD", "$env:ProgramData\NVIDIA Corporation\Downloader")
        Opis = 'Rozpakowane i pobrane instalatory sterowników. Zainstalowany sterownik działa bez nich.' }
     @{ Id = 'shadery'; Nazwa = 'Cache shaderów GPU (NVIDIA, DirectX)'
        Sciezki = @("$env:LOCALAPPDATA\NVIDIA\DXCache", "$env:LOCALAPPDATA\NVIDIA\GLCache", "$env:LOCALAPPDATA\D3DSCache")
@@ -289,7 +329,7 @@ $Kategorie = @(
     @{ Id = 'dns'; Nazwa = 'Cache DNS'; Typ = 'dns'
        Opis = 'Zapamiętane adresy stron. Nie zwalnia miejsca, pomaga przy problemach z siecią.' }
     @{ Id = 'winold'; Nazwa = 'Poprzednia wersja Windows (Windows.old)'; Typ = 'winold'; TylkoRecznie = $true
-       Sciezki = @('C:\Windows.old', 'C:\$WINDOWS.~BT', 'C:\$WINDOWS.~WS')
+       Sciezki = @("$Sys\Windows.old", "$Sys\`$WINDOWS.~BT", "$Sys\`$WINDOWS.~WS")
        Opis = 'Kopia systemu sprzed dużej aktualizacji, zwykle 10-30 GB. Po usunięciu nie da się wrócić do poprzedniej wersji Windows.' }
     @{ Id = 'dism'; Nazwa = 'Magazyn komponentów WinSxS (DISM)'; Typ = 'dism'; TylkoRecznie = $true
        Opis = 'Usuwa zastąpione wersje komponentów Windows, zwykle 1-3 GB. Trwa kilka minut. Potem nie da się odinstalować wcześniejszych aktualizacji.' }
@@ -306,7 +346,51 @@ function PlikiMiniatur {
         Where-Object { $_.Name -like 'thumbcache_*.db' -or $_.Name -like 'iconcache_*.db' }
 }
 
-function DyskiStale { Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' }
+# Lokalne dyski stale z litera. Pomijane: USB/karty (DriveType 2), sieciowe (4), CD (5), partycje bez litery
+# (EFI, Recovery) i woluminy niedostepne, np. zablokowane BitLockerem (brak rozmiaru).
+# Kosz uzytkownika na kazdym dysku: X:\$Recycle.Bin\<SID>
+function FolderyKosza { foreach ($d in DyskiWybrane) { $p = "$($d.DeviceID)\`$Recycle.Bin\$UzytkownikSid"; if (Test-Path -LiteralPath $p) { $p } } }
+
+function DyskiStale { Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Where-Object { $_.Size -gt 0 } }
+
+# Dyski wybrane przez uzytkownika na starcie. Dysk systemowy jest zawsze skanowany (cache Windows,
+# profil, Program Files); pozostale wplywaja na Kosz, biblioteki Steam/Epic i analize miejsca.
+$script:WybraneDyski = @($Sys)
+function DyskiWybrane { DyskiStale | Where-Object { $_.DeviceID -in $script:WybraneDyski } }
+function NaWybranymDysku([string]$p) { $p.Length -ge 2 -and $p.Substring(0, 2).ToUpper() -in $script:WybraneDyski }
+
+function WybierzDyski {
+    $lista = @(DyskiStale)
+    if ($Dyski) {
+        $script:WybraneDyski = @(@($Sys) + @($Dyski | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().TrimEnd(':', '\').ToUpper() + ':' }) |
+            Where-Object { $_ -in $lista.DeviceID } | Select-Object -Unique)
+        return
+    }
+    $wybor = @{}; foreach ($d in $lista) { $wybor[$d.DeviceID] = $true }
+    while ($true) {
+        Naglowek "DYSKI DO SKANOWANIA"
+        $i = 0
+        foreach ($d in $lista) {
+            $i++
+            $znak = if ($wybor[$d.DeviceID]) { '[x]' } else { '[ ]' }
+            $opis = if ($d.VolumeName) { $d.VolumeName } else { 'bez nazwy' }
+            Write-Host ("  {0} {1}. {2}  {3,-14} wolne {4,10} z {5,10}{6}" -f $znak, $i, $d.DeviceID, $opis, (Rozmiar $d.FreeSpace), (Rozmiar $d.Size),
+                $(if ($d.DeviceID -eq $Sys) { '   (systemowy - zawsze)' })) -ForegroundColor $(if ($wybor[$d.DeviceID]) { 'Green' } else { 'DarkGray' })
+        }
+        Write-Host "   Wybrane dyski: Kosz, biblioteki Steam/Epic i analiza miejsca (a). Dyski USB i sieciowe są pomijane." -ForegroundColor DarkGray
+        Write-Host "   Enter = skanuj zaznaczone | numery (np. 2 3) = zaznacz/odznacz" -ForegroundColor Yellow
+        $w = (Read-Host "   Wybór").Trim()
+        if ($w -eq '') { break }
+        foreach ($n in ($w -split '[\s,;]+')) {
+            $idx = 0
+            if ([int]::TryParse($n, [ref]$idx) -and $idx -ge 1 -and $idx -le $lista.Count) {
+                $id = $lista[$idx - 1].DeviceID
+                if ($id -ne $Sys) { $wybor[$id] = -not $wybor[$id] }
+            }
+        }
+    }
+    $script:WybraneDyski = @($lista | Where-Object { $wybor[$_.DeviceID] -or $_.DeviceID -eq $Sys } | ForEach-Object { $_.DeviceID })
+}
 
 # ---------- SKANER ----------
 
@@ -317,7 +401,7 @@ function SkanujKategorie {
             { $_ -in 'folder', 'winold' } { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
             'kosz' {
                 $b = 0.0
-                foreach ($d in DyskiStale) { $b += (Zmierz @("$($d.DeviceID)\`$Recycle.Bin")).Bajty }
+                $b = (Zmierz @(FolderyKosza)).Bajty
                 $k.Bajty = $b
             }
             'miniatury' { $k.Bajty = [double](PlikiMiniatur | Measure-Object Length -Sum).Sum }
@@ -327,11 +411,7 @@ function SkanujKategorie {
     }
 }
 
-function KatalogPobranych {
-    $p = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
-    if ($p -and (Test-Path -LiteralPath $p)) { return $p }
-    "$env:USERPROFILE\Downloads"
-}
+function KatalogPobranych { FolderUzytkownika '{374DE290-123F-4565-9164-39C4925E467B}' "$env:USERPROFILE\Downloads" }
 
 function SkanujDysk {
     $profil = $env:USERPROFILE
@@ -370,12 +450,12 @@ function SkanujDysk {
 
     $programy = Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
                                  'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
-                                 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' |
+                                 "$HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" |
         Where-Object { $_.DisplayName -and $_.EstimatedSize } |
         Sort-Object { [double]$_.EstimatedSize } -Descending | Select-Object -First 12 |
         ForEach-Object { @{ nazwa = $_.DisplayName; rozmiar = (Rozmiar ([double]$_.EstimatedSize * 1KB)); zainstalowano = $_.InstallDate } }
 
-    $hib = Get-Item -LiteralPath 'C:\hiberfil.sys' -Force
+    $hib = Get-Item -LiteralPath "$Sys\hiberfil.sys" -Force
     @{
         Kandydaci = $kandydaci
         Profil = @($gorne.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10 |
@@ -385,10 +465,10 @@ function SkanujDysk {
         Programy = @($programy)
         System = @{
             hiberfil = $(if ($hib) { Rozmiar $hib.Length } else { 'brak (hibernacja wyłączona)' })
-            windows_old = (Test-Path -LiteralPath 'C:\Windows.old')
-            stara_instalacja_bt = (Test-Path -LiteralPath 'C:\$WINDOWS.~BT')
+            windows_old = (Test-Path -LiteralPath "$Sys\Windows.old")
+            stara_instalacja_bt = (Test-Path -LiteralPath "$Sys\`$WINDOWS.~BT")
         }
-        Dyski = @(DyskiStale | ForEach-Object { @{ dysk = $_.DeviceID; wolne = (Rozmiar $_.FreeSpace); calosc = (Rozmiar $_.Size) } })
+        Dyski = @(DyskiWybrane | ForEach-Object { @{ dysk = $_.DeviceID; wolne = (Rozmiar $_.FreeSpace); calosc = (Rozmiar $_.Size) } })
     }
 }
 
@@ -438,7 +518,7 @@ function SciezkaPliku([string]$s) {
 function KluczeOdinstalowania {
     foreach ($r in 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
                    'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
-                   'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall') {
+                   "$HKCUNazwa\Software\Microsoft\Windows\CurrentVersion\Uninstall") {
         foreach ($k in Get-ChildItem "Registry::$r") {
             $v = Get-ItemProperty -LiteralPath $k.PSPath
             if ($v.DisplayName) { @{ Klucz = "$r\$($k.PSChildName)"; V = $v } }
@@ -479,14 +559,15 @@ function ZainstalowaneProgramy($wpisy) {
         DodajSciezke (SciezkaPliku $w.V.DisplayIcon)
         DodajSciezke (SciezkaPliku $w.V.UninstallString)
     }
-    foreach ($a in Get-AppxPackage) { Dodaj $a.Name; DodajSciezke $a.InstallLocation }
+    $appx = if ($InnyUzytkownik) { Get-AppxPackage -User $UzytkownikSid } else { Get-AppxPackage }
+    foreach ($a in $appx) { Dodaj $a.Name; DodajSciezke $a.InstallLocation }
     foreach ($g in SteamGry) { Dodaj $g }
     foreach ($p in Get-Process) { if ($p.Path) { DodajSciezke $p.Path; Dodaj ([IO.Path]::GetFileNameWithoutExtension($p.Path)) } }
     foreach ($s in Get-CimInstance Win32_Service) { DodajSciezke (SciezkaPliku $s.PathName) }
     # Skroty w menu Start i na pulpicie - lapia programy przenosne bez wpisu w rejestrze
     $sh = New-Object -ComObject WScript.Shell
     foreach ($d in "$env:APPDATA\Microsoft\Windows\Start Menu", "$env:ProgramData\Microsoft\Windows\Start Menu",
-                   [Environment]::GetFolderPath('Desktop'), "$env:PUBLIC\Desktop") {
+                   (FolderUzytkownika 'Desktop' "$env:USERPROFILE\Desktop"), "$env:PUBLIC\Desktop") {
         foreach ($l in Get-ChildItem -LiteralPath $d -Recurse -Filter *.lnk -Force) {
             Dodaj $l.BaseName
             $t = $sh.CreateShortcut($l.FullName).TargetPath
@@ -508,14 +589,17 @@ function NalezyDoProgramu([string]$nazwa, [string]$sciezka, $zainst) {
 }
 
 function ZmierzFolder($p) {
-    $b = 0.0; $ost = [datetime]::MinValue
-    foreach ($f in Pliki $p) { $b += $f.Length; if ($f.LastWriteTime -gt $ost) { $ost = $f.LastWriteTime } }
+    $b = 0.0; $ost = [datetime]::MinValue; $exe = $false
+    foreach ($f in Pliki $p) {
+        $b += $f.Length; if ($f.LastWriteTime -gt $ost) { $ost = $f.LastWriteTime }
+        if (-not $exe -and $f.Extension -eq '.exe') { $exe = $true }
+    }
     if ($ost -eq [datetime]::MinValue) { $ost = (Get-Item -LiteralPath $p -Force).LastWriteTime }
-    @{ Bajty = $b; Ostatnio = $ost }
+    @{ Bajty = $b; Ostatnio = $ost; MaExe = $exe }
 }
 
 function SteamBiblioteki {
-    $steam = (Get-ItemProperty 'HKCU:\Software\Valve\Steam').SteamPath
+    $steam = (Get-ItemProperty "$HKCU\Software\Valve\Steam").SteamPath
     if (-not $steam) { return }
     $steam = $steam -replace '/', '\'
     $biblioteki = @($steam)
@@ -537,7 +621,7 @@ function SteamGry {
 }
 
 function SteamOsierocone {
-    foreach ($b in SteamBiblioteki) {
+    foreach ($b in @(SteamBiblioteki | Where-Object { NaWybranymDysku $_ })) {
         $sa = "$b\steamapps"
         if (-not (Test-Path -LiteralPath $sa)) { continue }
         $katalogi = @{}; $ids = @{}
@@ -564,14 +648,14 @@ function SteamOsierocone {
 }
 
 function EpicOsierocone {
-    $man = 'C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests'
+    $man = "$env:ProgramData\Epic\EpicGamesLauncher\Data\Manifests"
     if (-not (Test-Path -LiteralPath $man)) { return }
     $zainst = @{}; $rodzice = @{ "$env:ProgramFiles\Epic Games".ToLower() = 1 }
     foreach ($i in Get-ChildItem -LiteralPath $man -Filter *.item) {
         $loc = (Get-Content -LiteralPath $i.FullName -Raw | ConvertFrom-Json).InstallLocation
         if ($loc) { $loc = $loc.TrimEnd('\').ToLower(); $zainst[$loc] = 1; $rodzice[(Split-Path $loc -Parent)] = 1 }
     }
-    foreach ($r in $rodzice.Keys) {
+    foreach ($r in @($rodzice.Keys | Where-Object { NaWybranymDysku $_ })) {
         foreach ($d in Get-ChildItem -LiteralPath $r -Directory -Force) {
             if ($zainst[$d.FullName.ToLower()] -or $d.Name -in 'Launcher', 'DirectXRedist' -or $d.Name -like 'UE_*') { continue }
             @{ Typ = 'folder'; Sciezka = $d.FullName; Nazwa = $d.Name; Pewnosc = 'wysoka'; Gra = $true
@@ -593,7 +677,8 @@ function SkanujPozostalosci {
         @{ P = $env:APPDATA; Gra = $false }, @{ P = $env:LOCALAPPDATA; Gra = $false },
         @{ P = "$env:LOCALAPPDATA\Programs"; Gra = $false }, @{ P = "$env:USERPROFILE\AppData\LocalLow"; Gra = $false },
         @{ P = $env:ProgramData; Gra = $false }, @{ P = $env:ProgramFiles; Gra = $false }, @{ P = ${env:ProgramFiles(x86)}; Gra = $false },
-        @{ P = "$env:USERPROFILE\Documents\My Games"; Gra = $true }, @{ P = "$env:USERPROFILE\Saved Games"; Gra = $true })
+        @{ P = "$(FolderUzytkownika 'Personal' "$env:USERPROFILE\Documents")\My Games"; Gra = $true }
+        @{ P = (FolderUzytkownika '{4C5C32FF-BB9D-43b0-B5B4-2D72E54EAAA4}' "$env:USERPROFILE\Saved Games"); Gra = $true })
     $wszystkieNazwy = New-Object 'System.Collections.Generic.HashSet[string]'
     $doSprawdzenia = @()
     foreach ($k in $korzenie) {
@@ -610,8 +695,12 @@ function SkanujPozostalosci {
         $dni = ($teraz - $m.Ostatnio).TotalDays
         if ($dni -lt 30 -or $m.Bajty -lt 1MB) { continue }   # cos tam jeszcze pisze albo nie warto
         $wyniki.Add(@{ Typ = 'folder'; Sciezka = $c.D.FullName; Nazwa = $c.D.Name; Bajty = $m.Bajty; Ostatnio = $m.Ostatnio
-            Pewnosc = $(if ($c.Zapisy) { 'niska' } elseif ($dni -ge 180) { 'wysoka' } else { 'srednia' })
-            Dlaczego = $(if ($c.Zapisy) { 'Zapisy/ustawienia gry - może chcesz je zachować.' } else { 'Brak zainstalowanego programu o tej nazwie.' }) })
+            # Odinstalowany program zwykle zostawia ustawienia i logi, nie pliki .exe - folder z .exe moze byc
+            # programem przenosnym bez wpisu w rejestrze, wiec nie zaznaczamy go z gory
+            Pewnosc = $(if ($c.Zapisy -or $m.MaExe) { 'niska' } elseif ($dni -ge 180) { 'wysoka' } else { 'srednia' })
+            Dlaczego = $(if ($c.Zapisy) { 'Zapisy/ustawienia gry - może chcesz je zachować.' }
+                        elseif ($m.MaExe) { 'Brak zainstalowanego programu o tej nazwie, ale folder zawiera pliki .exe - może to program przenośny.' }
+                        else { 'Brak zainstalowanego programu o tej nazwie.' }) })
     }
 
     # Gry
@@ -623,7 +712,7 @@ function SkanujPozostalosci {
 
     # Rejestr: klucze producentow bez programu i bez folderu o tej nazwie
     $rej = New-Object System.Collections.Generic.List[object]
-    foreach ($r in 'HKEY_CURRENT_USER\Software', 'HKEY_LOCAL_MACHINE\SOFTWARE', 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node') {
+    foreach ($r in "$HKCUNazwa\Software", 'HKEY_LOCAL_MACHINE\SOFTWARE', 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node') {
         foreach ($k in Get-ChildItem "Registry::$r") {
             $n = $k.PSChildName
             if (Pomijana $n) { continue }
@@ -830,6 +919,8 @@ if (-not $BezAktualizacji) {
 }
 
 $wolnePrzed = WolneC
+WybierzDyski
+Log "Dyski: $($script:WybraneDyski -join ', '), uzytkownik: $UzytkownikSid$(if ($InnyUzytkownik) { ' (inne konto niz administrator)' })"
 Naglowek "1/2  Skanowanie"
 SkanujKategorie
 Write-Host "   Przeglądam profil użytkownika (duże pliki, AppData)..." -ForegroundColor DarkGray
@@ -957,8 +1048,6 @@ function Czat {
 # Tylko do wgladu - nic stad nie trafia do planu. Skaner w C#, bo petla w PowerShellu
 # przechodzi milion plikow kilka minut. Nie wchodzi w junctions/symlinki, pomija pliki
 # tylko w chmurze (OneDrive). Twarde linki (WinSxS) sa liczone wielokrotnie, jak w Eksploratorze.
-
-$script:Analizy = @{}
 
 function KompilujSkaner {
     if ('LlmSkaner' -as [type]) { return }
@@ -1176,12 +1265,12 @@ function AnalizaAi($a) {
 }
 
 function Analiza {
-    $dyski = @(DyskiStale)
+    $lista = @(DyskiWybrane)
     Write-Host ""
-    Write-Host ("   Dyski: " + (($dyski | ForEach-Object { "{0} (wolne {1} z {2})" -f $_.DeviceID, (Rozmiar $_.FreeSpace), (Rozmiar $_.Size) }) -join ', ')) -ForegroundColor Gray
+    Write-Host ("   Dyski: " + (($lista | ForEach-Object { "{0} (wolne {1} z {2})" -f $_.DeviceID, (Rozmiar $_.FreeSpace), (Rozmiar $_.Size) }) -join ', ')) -ForegroundColor Gray
     $l = (Read-Host "   Który dysk przeanalizować? [C]").Trim().TrimEnd(':', '\').ToUpper()
     if (-not $l) { $l = 'C' }
-    if (-not ($dyski | Where-Object { $_.DeviceID -eq "$l`:" })) { Write-Host "   Nie ma dysku $l`:." -ForegroundColor Yellow; return }
+    if (-not ($lista | Where-Object { $_.DeviceID -eq "$l`:" })) { Write-Host "   Nie ma dysku $l`:." -ForegroundColor Yellow; return }
     if (-not $script:Analizy.ContainsKey($l)) {
         Write-Host "   Skanuję dysk $l`: (zwykle 30 s - 3 min)..." -ForegroundColor DarkGray
         $script:Analizy[$l] = SkanujDyskAnaliza $l
@@ -1216,8 +1305,8 @@ function Potwierdz {
         $suma = ($wybrane | ForEach-Object { [double]$_.Bajty } | Measure-Object -Sum).Sum
         Write-Host ""
         Write-Host ("   Zwolnione miejsce   : ok. {0}" -f (Rozmiar $suma)) -ForegroundColor Green
-        Write-Host ("   Wolne na C: teraz   : {0}" -f (Rozmiar $wolnePrzed)) -ForegroundColor Gray
-        Write-Host ("   Wolne na C: po      : ok. {0}" -f (Rozmiar ($wolnePrzed + $suma))) -ForegroundColor Gray
+        Write-Host ("   Wolne na {1}: teraz  : {0}" -f (Rozmiar $wolnePrzed), $Sys) -ForegroundColor Gray
+        Write-Host ("   Wolne na {1}: po     : ok. {0}" -f (Rozmiar ($wolnePrzed + $suma)), $Sys) -ForegroundColor Gray
         Write-Host "   (część plików może być w użyciu - wtedy zostaną pominięte i zysk będzie mniejszy)" -ForegroundColor DarkGray
     }
 
@@ -1340,13 +1429,17 @@ foreach ($k in ($Kategorie | Where-Object { $_.Wybrana })) {
             }
             foreach ($u in $k.Uslugi) { Start-Service $u }
         }
-        'kosz' { $zysk = $k.Bajty; Clear-RecycleBin -Force -Confirm:$false }
+        'kosz' {
+            $zysk = $k.Bajty
+            if ($InnyUzytkownik) { foreach ($s in FolderyKosza) { [void](UsunZawartosc $s) } } else { Clear-RecycleBin -Force -Confirm:$false }
+        }
         'miniatury' {
             Stop-Process -Name explorer -Force
             Start-Sleep -Seconds 3
             foreach ($f in PlikiMiniatur) { try { $dl = $f.Length; $f.Delete(); $zysk += $dl } catch { $bledy++ } }
-            if (-not (Get-Process explorer)) { Start-Process explorer.exe }
-            Start-Sleep -Seconds 2
+            # Windows sam wznawia powloke; recznie tylko na wlasnym koncie (inaczej ruszylaby jako administrator)
+            for ($i = 0; $i -lt 10 -and -not (Get-Process explorer); $i++) { Start-Sleep -Seconds 1 }
+            if (-not (Get-Process explorer) -and -not $InnyUzytkownik) { Start-Process explorer.exe }
         }
         'dns' { ipconfig /flushdns | Out-Null }
         'winold' {
@@ -1422,8 +1515,8 @@ $wolnePo = WolneC
 Naglowek "PODSUMOWANIE"
 Write-Host ("  Usunięte dane       : {0}" -f (Rozmiar $suma))
 Write-Host ("  Czas                : {0}m {1}s" -f $zegar.Elapsed.Minutes, $zegar.Elapsed.Seconds)
-Write-Host ("  Wolne na C: przed   : {0}" -f (Rozmiar $wolnePrzed))
-Write-Host ("  Wolne na C: po      : {0}" -f (Rozmiar $wolnePo)) -ForegroundColor Green
+Write-Host ("  Wolne na {1}: przed  : {0}" -f (Rozmiar $wolnePrzed), $Sys)
+Write-Host ("  Wolne na {1}: po     : {0}" -f (Rozmiar $wolnePo), $Sys) -ForegroundColor Green
 Write-Host ""
 Write-Host "  Log: $LogPlik" -ForegroundColor DarkGray
 Log ("Koniec. Usunieto {0}, wolne C: {1} -> {2}" -f (Rozmiar $suma), (Rozmiar $wolnePrzed), (Rozmiar $wolnePo))

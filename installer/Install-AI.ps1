@@ -18,16 +18,20 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # w PS 5.1 pasek postepu wielokrotnie spowalnia pobieranie
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$OllamaZip = 'https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip'
+# Paczka zalezna od procesora: ARM64 (np. Snapdragon) albo x64; dla kart AMD dochodza biblioteki ROCm
+$Url = 'https://github.com/ollama/ollama/releases/latest/download'
+$Arm = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64'
+$Paczki = @(if ($Arm) { 'ollama-windows-arm64.zip' } else { 'ollama-windows-amd64.zip' })
+if (-not $Arm -and (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'AMD|Radeon' })) { $Paczki += 'ollama-windows-amd64-rocm.zip' }
 $Port = '127.0.0.1:11435'                  # ten sam co w LLMCleaner.ps1
 
 $T = @{
     en = @{ Title = 'LLMCleaner - AI assistant setup'; Dir = 'Folder'; Have = 'AI engine (Ollama) is already installed.'
-            Down = 'Downloading the AI engine (Ollama, about 1.4 GB)...'; Unpack = 'Unpacking...'; Start = 'Starting the AI engine...'
+            Down = 'Downloading the AI engine (Ollama, about 1.4 GB)'; Unpack = 'Unpacking...'; Start = 'Starting the AI engine...'
             Pull = 'Downloading model {0} (about 2.5-5 GB, this can take a while)...'; Ok = 'Done. The AI assistant is ready.'
             Fail = 'AI setup failed: {0}'; Later = 'LLMCleaner works without AI. You can rerun this script later:'; Key = 'Press Enter to close' }
     pl = @{ Title = 'LLMCleaner - instalacja asystenta AI'; Dir = 'Folder'; Have = 'Silnik AI (Ollama) jest już zainstalowany.'
-            Down = 'Pobieram silnik AI (Ollama, ok. 1,4 GB)...'; Unpack = 'Rozpakowuję...'; Start = 'Uruchamiam silnik AI...'
+            Down = 'Pobieram silnik AI (Ollama, ok. 1,4 GB)'; Unpack = 'Rozpakowuję...'; Start = 'Uruchamiam silnik AI...'
             Pull = 'Pobieram model {0} (ok. 2,5-5 GB, to może chwilę potrwać)...'; Ok = 'Gotowe. Asystent AI jest gotowy.'
             Fail = 'Instalacja AI nie powiodła się: {0}'; Later = 'LLMCleaner działa bez AI. Ten skrypt możesz uruchomić później:'; Key = 'Enter zamyka okno' }
 }[$Lang]
@@ -52,23 +56,25 @@ try {
         Write-Host "  $($T.Have)" -ForegroundColor Gray
     }
     else {
-        Write-Host "  $($T.Down)" -ForegroundColor Gray
-        # curl.exe (wbudowany w Windows 10 1803+) pokazuje postep; inaczej Invoke-WebRequest
-        $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
-        if (Test-Path -LiteralPath $curl) {
-            & $curl -L --fail --progress-bar -o $zip $OllamaZip
-            if ($LASTEXITCODE -ne 0) { throw "download failed (curl exit $LASTEXITCODE)" }
-        }
-        else { Invoke-WebRequest $OllamaZip -OutFile $zip -UseBasicParsing }
+        foreach ($p in $Paczki) {
+            Write-Host "  $($T.Down) [$p]" -ForegroundColor Gray
+            # curl.exe (wbudowany w Windows 10 1803+) pokazuje postep; inaczej Invoke-WebRequest
+            $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+            if (Test-Path -LiteralPath $curl) {
+                & $curl -L --fail --progress-bar -o $zip "$Url/$p"
+                if ($LASTEXITCODE -ne 0) { throw "download failed: $p (curl exit $LASTEXITCODE)" }
+            }
+            else { Invoke-WebRequest "$Url/$p" -OutFile $zip -UseBasicParsing }
 
-        Write-Host "  $($T.Unpack)" -ForegroundColor Gray
-        $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
-        if (Test-Path -LiteralPath $tar) {
-            & $tar -xf $zip -C $OllamaDir
-            if ($LASTEXITCODE -ne 0) { throw "unpack failed (tar exit $LASTEXITCODE)" }
+            Write-Host "  $($T.Unpack)" -ForegroundColor Gray
+            $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+            if (Test-Path -LiteralPath $tar) {
+                & $tar -xf $zip -C $OllamaDir
+                if ($LASTEXITCODE -ne 0) { throw "unpack failed: $p (tar exit $LASTEXITCODE)" }
+            }
+            else { Expand-Archive -LiteralPath $zip -DestinationPath $OllamaDir -Force }
+            Remove-Item -LiteralPath $zip -Force
         }
-        else { Expand-Archive -LiteralPath $zip -DestinationPath $OllamaDir -Force }
-        Remove-Item -LiteralPath $zip -Force
         if (-not (Test-Path -LiteralPath $Exe)) { throw "ollama.exe not found in the downloaded archive" }
     }
 
