@@ -6,7 +6,8 @@
   the largest files with built-in hints. `w` lets the AI describe them and suggest what to do. The advice comes from a
   fixed list of safe options, and for system and program folders the program sets it. The view is read-only.
 - New cleanup categories:
-  - app caches: Discord, Slack, Teams, VS Code, Spotify, Steam and JetBrains IDEs, each skipped while it is running,
+  - app caches: Discord, Slack, Teams, VS Code, Spotify and Steam, each skipped while it is running,
+  - JetBrains IDE caches and indexes (opt-in, because the IDE has to re-index projects afterwards),
   - old NVIDIA and AMD driver installers,
   - the previous Windows version (`Windows.old`, `$WINDOWS.~BT`), removed through Windows Disk Cleanup and never
     preselected,

@@ -275,9 +275,10 @@ $grupyAplikacji = @(
     @{ Nazwa = 'Spotify'; Procesy = @('spotify'); Sciezki = @("$env:LOCALAPPDATA\Spotify\Data") }
     @{ Nazwa = 'Steam'; Procesy = @('steam', 'steamwebhelper')
        Sciezki = @($(if ($steam) { $s = $steam -replace '/', '\'; "$s\appcache\httpcache", "$s\appcache\librarycache" }) + "$env:LOCALAPPDATA\Steam\htmlcache") }
-    @{ Nazwa = 'JetBrains (cache i indeksy)'; Procesy = @('phpstorm64', 'webstorm64', 'idea64', 'pycharm64', 'rider64', 'clion64', 'goland64', 'datagrip64', 'rubymine64', 'rustrover64')
-       Sciezki = @(Get-ChildItem "$env:LOCALAPPDATA\JetBrains" -Directory -Force | ForEach-Object { "$($_.FullName)\caches", "$($_.FullName)\index" }) }
 )
+# IDE JetBrains osobno: po usunieciu indeksow projekty indeksuja sie od nowa (kilka minut)
+$grupaJetBrains = @{ Nazwa = 'JetBrains'; Procesy = @('phpstorm64', 'webstorm64', 'idea64', 'pycharm64', 'rider64', 'clion64', 'goland64', 'datagrip64', 'rubymine64', 'rustrover64')
+    Sciezki = @(Get-ChildItem "$env:LOCALAPPDATA\JetBrains" -Directory -Force | ForEach-Object { "$($_.FullName)\caches", "$($_.FullName)\index" } | Where-Object { Test-Path -LiteralPath $_ }) }
 # Zostaja tylko aplikacje, ktore sa na tym komputerze
 foreach ($g in $grupyAplikacji) { $g.Sciezki = @($g.Sciezki | Where-Object { $_ -and (Test-Path -LiteralPath $_) }) }
 $grupyAplikacji = @($grupyAplikacji | Where-Object { $_.Sciezki.Count })
@@ -318,6 +319,8 @@ $Kategorie = @(
     @{ Id = 'apki'; Nazwa = 'Cache aplikacji'; Grupy = $grupyAplikacji
        Sciezki = @($grupyAplikacji | ForEach-Object { $_.Sciezki })
        Opis = "Tylko cache, konta i ustawienia zostają. Uruchomione aplikacje są pomijane. Znalezione: $(if ($grupyAplikacji) { ($grupyAplikacji | ForEach-Object { $_.Nazwa }) -join ', ' } else { 'brak' })." }
+    @{ Id = 'ide'; Nazwa = 'Cache i indeksy IDE JetBrains'; Grupy = @($grupaJetBrains); Sciezki = $grupaJetBrains.Sciezki; TylkoRecznie = $true
+       Opis = 'Cache i indeksy PhpStorm, WebStorm, IntelliJ itd. (także starych wersji). Po czyszczeniu IDE indeksuje projekty od nowa. Pomijane, gdy IDE działa.' }
     @{ Id = 'sterowniki'; Nazwa = 'Stare instalatory sterowników (NVIDIA, AMD)'
        Sciezki = @("$Sys\NVIDIA", "$Sys\AMD", "$env:ProgramData\NVIDIA Corporation\Downloader")
        Opis = 'Rozpakowane i pobrane instalatory sterowników. Zainstalowany sterownik działa bez nich.' }

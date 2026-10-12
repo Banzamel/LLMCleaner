@@ -21,7 +21,7 @@ against GitHub Releases (disable it with `-BezAktualizacji`).
 - **Whitelist-based cleanup** of things that rebuild themselves: temp files, Windows Update cache, crash dumps,
   browser caches (Chrome, Edge, Brave, Firefox: all profiles; passwords, bookmarks and sessions are kept),
   npm/pip/yarn/uv/NuGet/Composer/Go caches, GPU shader caches, thumbnails, DNS cache, old NVIDIA/AMD driver installers,
-  app caches (Discord, Slack, Teams, VS Code, Spotify, Steam, JetBrains IDEs; each app is skipped while it is running),
+  app caches (Discord, Slack, Teams, VS Code, Spotify, Steam; each app is skipped while it is running), JetBrains IDE caches and indexes (opt-in),
   and optionally DISM, the previous Windows version (`Windows.old`, removed through Windows Disk Cleanup) and the
   Docker build cache.
 - **What takes up space (`a`).** A fast scan of any drive (about 45 s for 500,000 files) lists the most specific large
@@ -130,7 +130,7 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 
 | Item | Rule |
 |---|---|
-| Cleanup categories | 20 MB or more. The Recycle Bin (irreversible), DNS, `Windows.old`, DISM and Docker are never preselected |
+| Cleanup categories | 20 MB or more. The Recycle Bin (irreversible), DNS, JetBrains indexes, `Windows.old`, DISM and Docker are never preselected |
 | Leftovers, *high* confidence | Steam/Epic leftovers, dead uninstall entries, folders unchanged for 180 days or more |
 | Leftovers, *medium* confidence | folders unchanged for 30–180 days, orphaned registry keys |
 | Leftovers, *low* confidence | save games, large files: **never preselected** |
