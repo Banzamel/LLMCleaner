@@ -124,7 +124,10 @@ begin
   DirPage := CreateInputDirPage(ModelPage.ID,
     CustomMessage('DirTitle'), CustomMessage('DirDesc'), CustomMessage('DirSub'), False, '');
   DirPage.Add('');
-  DefaultDir := GetEnv('OLLAMA_MODELS');
+  // Read the saved user variable from the registry: the process environment may be stale
+  // (e.g. when setup is started from a console opened before OLLAMA_MODELS was set)
+  if not RegQueryStringValue(HKCU, 'Environment', 'OLLAMA_MODELS', DefaultDir) then
+    DefaultDir := GetEnv('OLLAMA_MODELS');
   if DefaultDir = '' then
     DefaultDir := ExpandConstant('{%USERPROFILE}\.ollama\models');
   DirPage.Values[0] := DefaultDir;
