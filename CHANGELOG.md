@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 (2026-10-12)
+
+- Small junk is no longer skipped: every non-empty cleanup category is preselected (previously 20 MB or more),
+  leftover folders smaller than 1 MB are listed, and the lists of leftover folders and registry keys are no longer
+  cut to 30 and 20 entries.
+
 ## 1.2.0 (2026-10-12)
 
 - **Window interface** (Windows Forms, built into Windows) is now the default: drive selection, the cleanup plan as a

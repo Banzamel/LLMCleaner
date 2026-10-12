@@ -5,7 +5,7 @@
     Jak dziala:
       1. Uzytkownik wybiera dyski. Skaner mierzy kategorie smieci z bialej listy i szuka pozostalosci
          po odinstalowanych programach i grach (foldery, duze pliki, klucze rejestru).
-      2. Plan ukladaja reguly: kategorie od 20 MB oraz pozostalosci o pewnosci wysokiej/sredniej.
+      2. Plan ukladaja reguly: niepuste kategorie oraz pozostalosci o pewnosci wysokiej/sredniej.
       3. Lokalny model laduje sie dopiero NA ZADANIE: opisuje pozostalosci, analize dysku
          ("co zajmuje miejsce") i odpowiada na pytania. Nie decyduje o usuwaniu i niczego nie wykonuje.
       4. Podsumowanie i potwierdzenie. Foldery i pliki ida do Kosza, przed usunieciem kluczy rejestru
@@ -38,7 +38,7 @@ param(
     [string]$Sid      # konto, ktore uruchomilo program (ustawia samo podnoszenie uprawnien)
 )
 
-$Wersja = '1.2.0'
+$Wersja = '1.2.1'
 $ErrorActionPreference = 'SilentlyContinue'
 $AppDir = $PSScriptRoot
 

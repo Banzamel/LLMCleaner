@@ -147,14 +147,14 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 
 | Item | Rule |
 |---|---|
-| Cleanup categories | 20 MB or more. The Recycle Bin (irreversible), DNS, JetBrains indexes, `Windows.old`, DISM and Docker are never preselected |
+| Cleanup categories | any non-empty category, however small. The Recycle Bin (irreversible), DNS, JetBrains indexes, `Windows.old`, DISM and Docker are never preselected |
 | Leftovers, *high* confidence | Steam/Epic leftovers, dead uninstall entries, folders unchanged for 180 days or more |
 | Leftovers, *medium* confidence | folders unchanged for 30–180 days, orphaned registry keys |
 | Leftovers, *low* confidence | save games, large files: **never preselected** |
 
 A folder is **not** treated as a leftover when its name or path matches an installed program, a Microsoft Store app,
 a service, a running process, a Start menu or desktop shortcut, or an installed Steam game. It is also skipped when it
-was modified in the last 30 days, is smaller than 1 MB, or is on the built-in list of system and driver folders
+was modified in the last 30 days or is on the built-in list of system and driver folders
 (`$PomijaneNazwy` in the script).
 
 ## Files and logs

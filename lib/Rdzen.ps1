@@ -654,7 +654,7 @@ function SkanujPozostalosci {
         Postep ("   {0}" -f $c.D.FullName)
         $m = ZmierzFolder $c.D.FullName
         $dni = ($teraz - $m.Ostatnio).TotalDays
-        if ($dni -lt 30 -or $m.Bajty -lt 1MB) { continue }   # cos tam jeszcze pisze albo nie warto
+        if ($dni -lt 30) { continue }   # cos tam jeszcze pisze
         $wyniki.Add(@{ Typ = 'folder'; Sciezka = $c.D.FullName; Nazwa = $c.D.Name; Bajty = $m.Bajty; Ostatnio = $m.Ostatnio
             # Odinstalowany program zwykle zostawia ustawienia i logi, nie pliki .exe - folder z .exe moze byc
             # programem przenosnym bez wpisu w rejestrze, wiec nie zaznaczamy go z gory
@@ -689,8 +689,7 @@ function SkanujPozostalosci {
         }
     }
 
-    $foldery = @($wyniki | Sort-Object { $_.Bajty } -Descending | Select-Object -First 30)
-    @($foldery) + @($martwe) + @($rej | Select-Object -First 20)
+    @($wyniki | Sort-Object { $_.Bajty } -Descending) + @($martwe) + @($rej)
 }
 
 # Caly skan: kategorie, profil, pozostalosci i plan. Wynik w $script:Kategorie/Pozostalosci/Dysk.
@@ -720,11 +719,11 @@ function SkanujWszystko {
 }
 
 # ---------- PLAN (reguly, bez modelu) ----------
-# Kategorie: zaznaczone, gdy maja co najmniej 20 MB. Kosz (nieodwracalny), DNS i kategorie
+# Kategorie: zaznaczone, gdy cokolwiek zawieraja. Kosz (nieodwracalny), DNS i kategorie
 # "tylko recznie" zawsze odznaczone. Pozostalosci: zaznaczone przy pewnosci wysokiej i sredniej.
 function UlozPlan {
     foreach ($k in $script:Kategorie) {
-        $k.Wybrana = -not $k.TylkoRecznie -and -not $k.Blokada -and $k.Typ -in 'folder', 'miniatury' -and $k.Bajty -ge 20MB
+        $k.Wybrana = -not $k.TylkoRecznie -and -not $k.Blokada -and $k.Typ -in 'folder', 'miniatury' -and $k.Bajty -gt 0
     }
     foreach ($p in $script:Pozostalosci) { $p.Wybrana = $p.Pewnosc -in 'wysoka', 'srednia' }
 }
