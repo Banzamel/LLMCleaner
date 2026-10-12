@@ -1,25 +1,33 @@
 ﻿<#
-    Install-AI.ps1 - instaluje Ollame (jesli jej nie ma) i pobiera model dla LLMCleanera.
-    Wywolywany przez instalator, mozna tez uruchomic recznie:
-      powershell -ExecutionPolicy Bypass -File Install-AI.ps1 -Model qwen3:4b-instruct -ModelDir D:\Ollama\models
+    Install-AI.ps1 - instaluje asystenta AI LLMCleanera w folderze programu:
+      ai\ollama\   silnik Ollama (oficjalny zip, bez instalatora, autostartu i ikony w zasobniku)
+      ai\models\   modele
+    Nic nie trafia do profilu uzytkownika ani do zmiennych srodowiskowych; odinstalowanie
+    LLMCleanera usuwa caly folder ai\.
+
+    Wywolywany przez instalator, mozna tez uruchomic recznie (np. w wersji portable):
+      powershell -ExecutionPolicy Bypass -File Install-AI.ps1 -Model qwen3:4b-instruct
 #>
 param(
     [string]$Model = 'qwen3:4b-instruct',
-    [string]$ModelDir,
-    [ValidateSet('en', 'pl')][string]$Lang = 'en'
+    [ValidateSet('en', 'pl')][string]$Lang = 'en',
+    [string]$AppDir = $PSScriptRoot
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # w PS 5.1 pasek postepu wielokrotnie spowalnia pobieranie
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+$OllamaZip = 'https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip'
+$Port = '127.0.0.1:11435'                  # ten sam co w LLMCleaner.ps1
+
 $T = @{
-    en = @{ Title = 'LLMCleaner - AI assistant setup'; Dir = 'Model folder'; Have = 'Ollama is already installed.'
-            Down = 'Downloading Ollama...'; Inst = 'Installing Ollama...'; Start = 'Starting the Ollama server...'
+    en = @{ Title = 'LLMCleaner - AI assistant setup'; Dir = 'Folder'; Have = 'AI engine (Ollama) is already installed.'
+            Down = 'Downloading the AI engine (Ollama, about 1.4 GB)...'; Unpack = 'Unpacking...'; Start = 'Starting the AI engine...'
             Pull = 'Downloading model {0} (about 2.5-5 GB, this can take a while)...'; Ok = 'Done. The AI assistant is ready.'
             Fail = 'AI setup failed: {0}'; Later = 'LLMCleaner works without AI. You can rerun this script later:'; Key = 'Press Enter to close' }
-    pl = @{ Title = 'LLMCleaner - instalacja asystenta AI'; Dir = 'Folder modeli'; Have = 'Ollama jest już zainstalowana.'
-            Down = 'Pobieram Ollamę...'; Inst = 'Instaluję Ollamę...'; Start = 'Uruchamiam serwer Ollamy...'
+    pl = @{ Title = 'LLMCleaner - instalacja asystenta AI'; Dir = 'Folder'; Have = 'Silnik AI (Ollama) jest już zainstalowany.'
+            Down = 'Pobieram silnik AI (Ollama, ok. 1,4 GB)...'; Unpack = 'Rozpakowuję...'; Start = 'Uruchamiam silnik AI...'
             Pull = 'Pobieram model {0} (ok. 2,5-5 GB, to może chwilę potrwać)...'; Ok = 'Gotowe. Asystent AI jest gotowy.'
             Fail = 'Instalacja AI nie powiodła się: {0}'; Later = 'LLMCleaner działa bez AI. Ten skrypt możesz uruchomić później:'; Key = 'Enter zamyka okno' }
 }[$Lang]
@@ -29,43 +37,64 @@ Write-Host ""
 Write-Host "  $($T.Title)" -ForegroundColor Cyan
 Write-Host ""
 
-try {
-    if ($ModelDir) {
-        New-Item -ItemType Directory -Force $ModelDir | Out-Null
-        [Environment]::SetEnvironmentVariable('OLLAMA_MODELS', $ModelDir, 'User')
-        $env:OLLAMA_MODELS = $ModelDir
-        Write-Host "  $($T.Dir): $ModelDir" -ForegroundColor DarkGray
-    }
+$AiDir = Join-Path $AppDir 'ai'
+$OllamaDir = Join-Path $AiDir 'ollama'
+$ModelsDir = Join-Path $AiDir 'models'
+$Exe = Join-Path $OllamaDir 'ollama.exe'
+$zip = Join-Path $AiDir 'ollama-download.zip'
+$serwer = $null
 
-    $exe = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
-    if (Test-Path -LiteralPath $exe) {
+try {
+    New-Item -ItemType Directory -Force $OllamaDir, $ModelsDir | Out-Null
+    Write-Host "  $($T.Dir): $AiDir" -ForegroundColor DarkGray
+
+    if (Test-Path -LiteralPath $Exe) {
         Write-Host "  $($T.Have)" -ForegroundColor Gray
     }
     else {
         Write-Host "  $($T.Down)" -ForegroundColor Gray
-        $setup = Join-Path $env:TEMP 'OllamaSetup.exe'
-        Invoke-WebRequest 'https://ollama.com/download/OllamaSetup.exe' -OutFile $setup -UseBasicParsing
-        Write-Host "  $($T.Inst)" -ForegroundColor Gray
-        Start-Process $setup -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES' -Wait
-        Remove-Item $setup -Force -ErrorAction SilentlyContinue
-        if (-not (Test-Path -LiteralPath $exe)) { throw "ollama.exe not found after install" }
+        # curl.exe (wbudowany w Windows 10 1803+) pokazuje postep; inaczej Invoke-WebRequest
+        $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+        if (Test-Path -LiteralPath $curl) {
+            & $curl -L --fail --progress-bar -o $zip $OllamaZip
+            if ($LASTEXITCODE -ne 0) { throw "download failed (curl exit $LASTEXITCODE)" }
+        }
+        else { Invoke-WebRequest $OllamaZip -OutFile $zip -UseBasicParsing }
+
+        Write-Host "  $($T.Unpack)" -ForegroundColor Gray
+        $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+        if (Test-Path -LiteralPath $tar) {
+            & $tar -xf $zip -C $OllamaDir
+            if ($LASTEXITCODE -ne 0) { throw "unpack failed (tar exit $LASTEXITCODE)" }
+        }
+        else { Expand-Archive -LiteralPath $zip -DestinationPath $OllamaDir -Force }
+        Remove-Item -LiteralPath $zip -Force
+        if (-not (Test-Path -LiteralPath $Exe)) { throw "ollama.exe not found in the downloaded archive" }
     }
 
-    # Restart serwera, zeby na pewno widzial OLLAMA_MODELS
+    # Prywatny serwer: wlasny port, modele i klucze w ai\
     Write-Host "  $($T.Start)" -ForegroundColor Gray
-    Get-Process 'ollama', 'ollama app' -ErrorAction SilentlyContinue | Stop-Process -Force
-    Start-Sleep -Seconds 2
-    Start-Process $exe -ArgumentList 'serve' -WindowStyle Hidden
+    $env:OLLAMA_HOST = $Port
+    $psi = New-Object Diagnostics.ProcessStartInfo $Exe, 'serve'
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.EnvironmentVariables['OLLAMA_HOST'] = $Port
+    $psi.EnvironmentVariables['OLLAMA_MODELS'] = $ModelsDir
+    $psi.EnvironmentVariables['USERPROFILE'] = $AiDir
+    $serwer = [Diagnostics.Process]::Start($psi)
     $ok = $false
     for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
         Start-Sleep -Milliseconds 500
-        try { Invoke-RestMethod 'http://127.0.0.1:11434/api/version' -TimeoutSec 2 | Out-Null; $ok = $true } catch { }
+        try { Invoke-RestMethod "http://$Port/api/version" -TimeoutSec 2 | Out-Null; $ok = $true } catch { }
     }
     if (-not $ok) { throw "Ollama server did not start" }
 
     Write-Host ("  " + $T.Pull -f $Model) -ForegroundColor Gray
-    & $exe pull $Model
+    & $Exe pull $Model
     if ($LASTEXITCODE -ne 0) { throw "ollama pull $Model (exit $LASTEXITCODE)" }
+
+    # Model uzywany przez LLMCleaner.ps1, gdy nie podano -Model
+    [IO.File]::WriteAllText((Join-Path $AppDir 'config.json'), "{ `"model`": `"$Model`" }")
 
     Write-Host ""
     Write-Host "  $($T.Ok)" -ForegroundColor Green
@@ -78,4 +107,9 @@ catch {
     Write-Host "  powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Model $Model" -ForegroundColor Gray
     Write-Host ""
     Read-Host "  $($T.Key)"
+}
+finally {
+    # Serwer byl potrzebny tylko do pobrania modelu; LLMCleaner uruchamia go sam, na zadanie
+    if ($serwer -and -not $serwer.HasExited) { $serwer.Kill(); $serwer.WaitForExit(5000) | Out-Null }
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
 }

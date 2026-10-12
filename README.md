@@ -6,8 +6,8 @@
 
 **Smart Windows cleanup with a local AI assistant.** LLMCleaner finds junk files, caches and leftovers of uninstalled
 programs and games, shows you a plan with exact sizes, and cleans only after you confirm. An optional local AI model
-(via [Ollama](https://ollama.com)) explains what the leftovers were and answers your questions. Everything runs on
-your machine, and nothing is sent to the internet.
+explains what the leftovers were and answers your questions. The AI engine ([Ollama](https://ollama.com)) is bundled
+in the program folder, so everything runs on your machine and nothing is sent to the internet.
 
 > The program interface is in **Polish**. This README is in English.
 
@@ -45,9 +45,14 @@ your machine, and nothing is sent to the internet.
 2. Run it. The wizard lets you choose:
    - the **install location** (per-user by default, no admin rights needed; choose *all users* if you prefer),
    - a **desktop shortcut**,
-   - the optional **AI assistant**: installs Ollama if missing, lets you pick the **model**
-     (`qwen3:4b-instruct` or `qwen3:8b`) and the **folder for models** (sets `OLLAMA_MODELS`).
+   - the optional **AI assistant** and its **model** (`qwen3:4b-instruct` or `qwen3:8b`). The installer downloads
+     the Ollama engine (about 1.4 GB) and the model (2.5–5 GB) **into the program folder** (`ai\`).
 3. Start **LLMCleaner** from the Start menu or the desktop.
+
+Everything stays inside the install folder: no separate Ollama installation, no tray icon, no autostart, no
+environment variables. The AI engine runs on a private port (`11435`) only while LLMCleaner is open, so it does not
+conflict with an Ollama you may have installed yourself. **Uninstalling removes the program, the AI engine and the
+models.**
 
 The installer is not code-signed, so Windows SmartScreen may show a warning on the first run
 (*More info → Run anyway*).
@@ -55,17 +60,18 @@ The installer is not code-signed, so Windows SmartScreen may show a warning on t
 ### Portable
 
 Download `LLMCleaner-<version>-portable.zip`, extract it anywhere and run `LLMCleaner.bat`.
-To enable the AI assistant, run `Install-AI.ps1` from the same folder:
+To enable the AI assistant, run `Install-AI.ps1` from the same folder. It downloads Ollama and the model into an
+`ai` subfolder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File Install-AI.ps1 -Model qwen3:4b-instruct -ModelDir D:\Ollama\models
+powershell -ExecutionPolicy Bypass -File Install-AI.ps1 -Model qwen3:4b-instruct
 ```
 
 ### Requirements
 
 - Windows 10 or 11 with Windows PowerShell 5.1 (built in).
 - Administrator rights when cleaning. LLMCleaner asks for them through UAC.
-- Optional, for the AI assistant: [Ollama](https://ollama.com) and about 3–6 GB of disk space. A GPU with 6 GB of
+- Optional, for the AI assistant: about 4–7 GB of disk space in the install folder. An NVIDIA GPU with 6 GB of
   VRAM or more is recommended, though it also runs (slower) on the CPU.
 
 ## Usage
@@ -106,6 +112,8 @@ was modified in the last 30 days, is smaller than 1 MB, or is on the built-in li
 | Path | Contents |
 |---|---|
 | install folder | `LLMCleaner.ps1`, `LLMCleaner.bat`, `Install-AI.ps1`, `config.json` (the model chosen in the installer) |
+| `<install folder>\ai\ollama\` | the bundled Ollama engine |
+| `<install folder>\ai\models\` | AI models |
 | `%LOCALAPPDATA%\LLMCleaner\logs\` | one log per run: scan report, chosen plan, results, everything moved to the Recycle Bin |
 | `%LOCALAPPDATA%\LLMCleaner\logs\kopie_rejestru\` | `.reg` backups of deleted registry keys |
 
@@ -130,9 +138,10 @@ about game studios, the model also invented titles. That is why:
 
 | Problem | Fix |
 |---|---|
-| *Nie udało się uruchomić Ollamy* (Ollama failed to start) | run `ollama serve` manually and check the output; logs are in `%LOCALAPPDATA%\Ollama\` |
-| *Brak modelu …* (model missing) | `ollama pull qwen3:4b-instruct` |
-| `w` / `p` takes minutes | run `ollama ps`; if the PROCESSOR column shows CPU, something else is using the VRAM |
+| *Asystent AI nie jest zainstalowany* (AI not installed) | rerun the installer and tick the AI assistant, or run `Install-AI.ps1` from the install folder |
+| *Nie udało się uruchomić Ollamy* (Ollama failed to start) | run `ai\ollama\ollama.exe serve` from the install folder and check the output |
+| *Brak modelu …* (model missing) | `Install-AI.ps1 -Model qwen3:4b-instruct` |
+| `w` / `p` takes minutes | the model probably does not fit into the VRAM (check *Dedicated GPU memory* in Task Manager); close games or other GPU-heavy programs |
 | Browser cache skipped | close the browser (also from the system tray) and run again |
 | Garbled Polish characters | `LLMCleaner.ps1` must be saved as **UTF-8 with BOM** |
 | Taskbar did not come back | `Ctrl+Shift+Esc` → File → Run new task → `explorer.exe` |

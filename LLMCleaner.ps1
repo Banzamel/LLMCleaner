@@ -52,8 +52,11 @@ if (-not $adm) {
 }
 
 # ---------- USTAWIENIA ----------
-$OllamaUrl = 'http://127.0.0.1:11434'
-$OllamaExe = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
+# Wlasna Ollama w folderze programu (instaluje ja Install-AI.ps1); osobny port, zeby nie
+# kolidowac z Ollama zainstalowana w systemie
+$AiDir = Join-Path $PSScriptRoot 'ai'
+$OllamaExe = Join-Path $AiDir 'ollama\ollama.exe'
+$OllamaUrl = 'http://127.0.0.1:11435'
 # Logi i kopie rejestru poza folderem programu - przetrwaja aktualizacje i odinstalowanie
 $LogDir = Join-Path $env:LOCALAPPDATA 'LLMCleaner\logs'
 $REPARSE = [IO.FileAttributes]::ReparsePoint
@@ -587,15 +590,59 @@ function OllamaDziala {
     try { Invoke-RestMethod "$OllamaUrl/api/version" -TimeoutSec 2 -ErrorAction Stop | Out-Null; $true } catch { $false }
 }
 
+# Job Object z KILL_ON_JOB_CLOSE: serwer (i jego procesy runner) ginie razem z LLMCleanerem,
+# takze gdy okno zostanie zamkniete krzyzykiem
+function PrzypnijDoZadania([Diagnostics.Process]$proces) {
+    if (-not ('LlmJob' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class LlmJob {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attr, string name);
+    [DllImport("kernel32.dll")] static extern bool SetInformationJobObject(IntPtr job, int cls, IntPtr info, uint len);
+    [DllImport("kernel32.dll")] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [StructLayout(LayoutKind.Sequential)] struct Basic { public long a, b; public uint LimitFlags; public UIntPtr c, d; public uint e; public UIntPtr f; public uint g, h; }
+    [StructLayout(LayoutKind.Sequential)] struct Io { public ulong a, b, c, d, e, f; }
+    [StructLayout(LayoutKind.Sequential)] struct Extended { public Basic B; public Io I; public UIntPtr a, b, c, d; }
+    static IntPtr job = IntPtr.Zero;
+    public static bool Attach(IntPtr process) {
+        if (job == IntPtr.Zero) {
+            job = CreateJobObject(IntPtr.Zero, null);
+            var info = new Extended();
+            info.B.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            int len = Marshal.SizeOf(typeof(Extended));
+            IntPtr p = Marshal.AllocHGlobal(len);
+            Marshal.StructureToPtr(info, p, false);
+            SetInformationJobObject(job, 9, p, (uint)len); // JobObjectExtendedLimitInformation
+            Marshal.FreeHGlobal(p);
+        }
+        return AssignProcessToJobObject(job, process);
+    }
+    public static void Close() { if (job != IntPtr.Zero) { CloseHandle(job); job = IntPtr.Zero; } }
+}
+'@
+    }
+    [LlmJob]::Attach($proces.Handle)
+}
+
 function UruchomOllama {
     if (OllamaDziala) { return $true }
     if (-not (Test-Path -LiteralPath $OllamaExe)) { return $false }
-    $md = [Environment]::GetEnvironmentVariable('OLLAMA_MODELS', 'User')
-    if ($md) { $env:OLLAMA_MODELS = $md }
-    Start-Process $OllamaExe -ArgumentList 'serve' -WindowStyle Hidden
+    # Modele i klucze Ollamy zostaja w folderze ai\ - nic nie trafia do profilu uzytkownika
+    $psi = New-Object Diagnostics.ProcessStartInfo $OllamaExe, 'serve'
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.EnvironmentVariables['OLLAMA_HOST'] = $OllamaUrl -replace '^http://', ''
+    $psi.EnvironmentVariables['OLLAMA_MODELS'] = Join-Path $AiDir 'models'
+    $psi.EnvironmentVariables['USERPROFILE'] = $AiDir
+    $proces = [Diagnostics.Process]::Start($psi)
+    if (-not (PrzypnijDoZadania $proces)) { Log 'Job Object: nie udalo sie przypiac serwera' }
     for ($i = 0; $i -lt 40; $i++) { Start-Sleep -Milliseconds 500; if (OllamaDziala) { return $true } }
     $false
 }
+
+function ZatrzymajOllama { if ('LlmJob' -as [type]) { [LlmJob]::Close() } }
 
 function MaModel {
     try { $t = Invoke-RestMethod "$OllamaUrl/api/tags" -TimeoutSec 5 -ErrorAction Stop } catch { return $false }
@@ -618,12 +665,17 @@ function ZapewnijModel {
     if ($BezLLM) { Write-Host "   Model jest wyłączony (uruchomiono z -BezLLM)." -ForegroundColor Yellow; return $false }
     if ($null -ne $script:llmStan) { return $script:llmStan }
     Write-Host "   Uruchamiam model $Model (pierwsze użycie trwa ok. 10-20 s)..." -ForegroundColor DarkGray
-    if (-not (UruchomOllama)) {
-        Write-Host "   Nie udało się uruchomić Ollamy - asystent niedostępny." -ForegroundColor Yellow
+    if (-not (Test-Path -LiteralPath $OllamaExe)) {
+        Write-Host "   Asystent AI nie jest zainstalowany. Uruchom ponownie instalator i zaznacz asystenta AI" -ForegroundColor Yellow
+        Write-Host "   (albo Install-AI.ps1 z folderu programu)." -ForegroundColor Yellow
+        $script:llmStan = $false
+    }
+    elseif (-not (UruchomOllama)) {
+        Write-Host "   Nie udało się uruchomić Ollamy z folderu ai\ - asystent niedostępny." -ForegroundColor Yellow
         $script:llmStan = $false
     }
     elseif (-not (MaModel)) {
-        Write-Host "   Brak modelu $Model w Ollamie (ollama pull $Model) - asystent niedostępny." -ForegroundColor Yellow
+        Write-Host "   Brak modelu $Model w folderze ai\models (Install-AI.ps1 -Model $Model) - asystent niedostępny." -ForegroundColor Yellow
         $script:llmStan = $false
     }
     else { $script:llmStan = $true }
@@ -864,7 +916,7 @@ while ($true) {
         if ($Podglad -or (Potwierdz)) { break }
         continue
     }
-    if ($w -match '^[qQ]') { Log 'Przerwano przez uzytkownika.'; Write-Host "`n   Przerwano - nic nie zostało usunięte.`n"; Read-Host "   Enter kończy"; exit }
+    if ($w -match '^[qQ]') { Log 'Przerwano przez uzytkownika.'; Write-Host "`n   Przerwano - nic nie zostało usunięte.`n"; ZatrzymajOllama; Read-Host "   Enter kończy"; exit }
     if ($w -match '^[pP]$') { Czat; continue }
     if ($w -match '^[wW]$') { Wyjasnij; continue }
     foreach ($n in ($w -split '[\s,;]+')) {
@@ -884,11 +936,13 @@ while ($true) {
 if ($Podglad) {
     Log 'Tryb podgladu - koniec bez usuwania.'
     Write-Host "`n   Tryb podglądu - nic nie zostało usunięte. Log: $LogPlik`n" -ForegroundColor Yellow
+    ZatrzymajOllama
     Read-Host "   Enter kończy"
     exit
 }
 
 # ---------- WYKONANIE ----------
+ZatrzymajOllama   # asystent nie jest juz potrzebny - zwalnia VRAM i RAM na czas czyszczenia
 Naglowek "2/2  Czyszczenie"
 Log ("Plan: kategorie [{0}], pozostalosci [{1}]" -f (($Kategorie | Where-Object { $_.Wybrana } | ForEach-Object { $_.Id }) -join ', '),
     (($Pozostalosci | Where-Object { $_.Wybrana } | ForEach-Object { $_.Id }) -join ', '))
