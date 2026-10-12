@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0 (2026-10-12)
+
+- **Window interface** (Windows Forms, built into Windows) is now the default: drive selection, the cleanup plan as a
+  checklist, *What takes up space*, the AI assistant and the log in tabs. AI calls run in the background, so the window
+  stays responsive. The text interface is still available with `-Konsola`.
+- **English interface.** The language follows the Windows display language; override it with `-Jezyk en` or `-Jezyk pl`.
+  The AI answers in the same language. Parameters have English aliases (`-Console`, `-Preview`, `-NoAI`, `-Drives`,
+  `-Language`, `-NoUpdateCheck`).
+- The code is split into `lib\Rdzen.ps1` (scanning, plan, AI, cleaning), `lib\Okno.ps1` (window) and `lib\Konsola.ps1`
+  (text mode).
+- The AI chat gets the plan sorted by size, so it answers questions like *what is the largest item* correctly.
+- The Start menu has three shortcuts: the window, preview mode and the text mode.
+
 ## 1.1.0 (2026-10-12)
 
 - **What takes up space** (`a` on the plan screen): a fast scan of any drive lists the most specific large folders and

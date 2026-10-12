@@ -50,8 +50,10 @@ english.ModelSub=The AI engine (Ollama, 1.4 GB) and the model are stored in the 
 english.Model4b=qwen3:4b-instruct - recommended, fast, fits GPUs with 6 GB VRAM (2.5 GB download)
 english.Model8b=qwen3:8b - smarter, needs about 8 GB VRAM, slower on smaller GPUs (5.2 GB download)
 english.RunAi=Setting up the AI assistant (Ollama + model)...
-english.Launch=Launch LLMCleaner (preview mode - nothing is deleted)
+english.Launch=Launch LLMCleaner in preview mode (nothing is deleted)
 english.Docs=Read the documentation
+english.ShortPreview=preview
+english.ShortConsole=console
 
 polish.AiGroup=Asystent AI (opcjonalnie):
 polish.AiTask=Zainstaluj asystenta AI w folderze programu (pobiera ok. 4-7 GB)
@@ -61,8 +63,10 @@ polish.ModelSub=Silnik AI (Ollama, 1,4 GB) i model trafiają do folderu programu
 polish.Model4b=qwen3:4b-instruct - zalecany, szybki, mieści się w kartach z 6 GB VRAM (2,5 GB)
 polish.Model8b=qwen3:8b - mądrzejszy, potrzebuje ok. 8 GB VRAM, wolniejszy na słabszych kartach (5,2 GB)
 polish.RunAi=Instaluję asystenta AI (Ollama + model)...
-polish.Launch=Uruchom LLMCleaner (tryb podglądu - nic nie zostanie usunięte)
+polish.Launch=Uruchom LLMCleaner w trybie podglądu (nic nie zostanie usunięte)
 polish.Docs=Otwórz dokumentację
+polish.ShortPreview=podgląd
+polish.ShortConsole=konsola
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -75,17 +79,21 @@ Source: "..\LLMCleaner.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Install-AI.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\lib\*.ps1"; DestDir: "{app}\lib"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\LLMCleaner.ps1"""; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"""; \
   WorkingDir: "{app}"; IconFilename: "{app}\LLMCleaner.ico"
-Name: "{group}\{#AppName} (preview)"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\LLMCleaner.ps1"" -Podglad"; \
+Name: "{group}\{#AppName} ({cm:ShortPreview})"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"" -Podglad"; \
+  WorkingDir: "{app}"; IconFilename: "{app}\LLMCleaner.ico"
+Name: "{group}\{#AppName} ({cm:ShortConsole})"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\LLMCleaner.ps1"" -Konsola"; \
   WorkingDir: "{app}"; IconFilename: "{app}\LLMCleaner.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\LLMCleaner.ps1"""; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"""; \
   WorkingDir: "{app}"; IconFilename: "{app}\LLMCleaner.ico"; Tasks: desktopicon
 
 [Run]
@@ -93,7 +101,7 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Install-AI.ps1"" -Model ""{code:GetModel}"" -Lang {code:GetLang}"; \
   StatusMsg: "{cm:RunAi}"; Tasks: ai; Flags: waituntilterminated
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\LLMCleaner.ps1"" -Podglad"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"" -Podglad"; \
   WorkingDir: "{app}"; Description: "{cm:Launch}"; Flags: postinstall nowait skipifsilent unchecked
 Filename: "{#AppURL}#readme"; Description: "{cm:Docs}"; Flags: postinstall shellexec nowait skipifsilent unchecked
 

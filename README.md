@@ -10,14 +10,15 @@ explains what the leftovers were and answers your questions. The AI engine ([Oll
 in the program folder, so everything runs on your machine. The only network request is an optional update check
 against GitHub Releases (disable it with `-BezAktualizacji`).
 
-> The program interface is in **Polish**. This README is in English.
+> LLMCleaner has a **window** (default) and a **text mode** (`-Konsola`). The interface is in **English or Polish**,
+> chosen from the Windows display language (`-Jezyk en` / `-Jezyk pl` to override).
 
 ---
 
 ## Features
 
-- **Scan first, clean later.** At start you tick the drives to scan. A plan appears about 10 seconds later. You review
-  it, change it, see a summary with the space to be freed, and confirm with `t` (yes). The default answer is *no*.
+- **Scan first, clean later.** You tick the drives to scan and click *Scan*. The plan appears as a checklist with sizes
+  and descriptions. You change it, see a summary with the space to be freed, and confirm. The default answer is *no*.
 - **Whitelist-based cleanup** of things that rebuild themselves: temp files, Windows Update cache, crash dumps,
   browser caches (Chrome, Edge, Brave, Firefox: all profiles; passwords, bookmarks and sessions are kept),
   npm/pip/yarn/uv/NuGet/Composer/Go caches, GPU shader caches, thumbnails, DNS cache, old NVIDIA/AMD driver installers,
@@ -50,12 +51,10 @@ against GitHub Releases (disable it with `-BezAktualizacji`).
     profile, registry and Recycle Bin of the person who started it, not the administrator's,
   - the AI installer picks the ARM64 engine on ARM PCs and adds AMD (ROCm) libraries when an AMD GPU is present.
 - **AI on demand.** The model never decides what gets deleted and never runs commands. It loads only when you
-  ask for it:
-  - `w`: describe what each leftover was,
-  - `p`: chat about the plan, folders and programs,
-  - `a` → `w`: describe the largest folders on a drive and suggest what to do.
-- **Updates.** LLMCleaner checks GitHub Releases at start. When a new version is out, `u` downloads and runs its
-  installer.
+  ask for it: to describe what each leftover was, to describe the largest folders on a drive and suggest what to do,
+  or to chat about the plan, folders and programs. AI calls run in the background, so the window stays responsive.
+- **Updates.** LLMCleaner checks GitHub Releases at start. When a new version is out, one click downloads and runs
+  its installer.
 
 ## Installation
 
@@ -96,13 +95,31 @@ powershell -ExecutionPolicy Bypass -File Install-AI.ps1 -Model qwen3:4b-instruct
 
 ## Usage
 
+Start **LLMCleaner** from the Start menu or the desktop. The Start menu also has *LLMCleaner (preview)*, which never
+deletes anything, and *LLMCleaner (console)* for the text mode.
+
+### The window
+
+1. **Drives** at the top: tick the drives to scan and click **Scan**.
+2. **Cleanup plan** tab: tick or untick categories and leftovers. Hover over an item for its full description.
+   - **AI: what were the leftovers?** fills in what each leftover was (marked *AI (may be wrong)*),
+   - **Clean selected...** shows a summary and asks for confirmation.
+3. **What takes up space** tab: pick a drive, click **Analyse**, then **AI: describe and advise**. Double-click an
+   item to open it in File Explorer.
+4. **AI assistant** tab: ask about the plan, folders, programs or games.
+5. **Log** tab: everything the program does, also written to the log file.
+
+### Parameters
+
 ```
-LLMCleaner.bat              normal run: scan → plan → summary → confirm
-LLMCleaner.bat -Podglad     preview: scan and plan only, nothing is deleted
-LLMCleaner.bat -BezLLM      without the AI assistant
-LLMCleaner.bat -Model qwen3:8b
-LLMCleaner.bat -BezAktualizacji   no update check at start
-LLMCleaner.bat -Dyski C,P         scan these drives without asking
+LLMCleaner.bat                     the window
+LLMCleaner.bat -Konsola            text mode (alias -Console)
+LLMCleaner.bat -Podglad            preview: scan and plan only, nothing is deleted (alias -Preview)
+LLMCleaner.bat -BezLLM             without the AI assistant (alias -NoAI)
+LLMCleaner.bat -Model qwen3:8b     another model
+LLMCleaner.bat -Dyski C,P          pre-select these drives (alias -Drives)
+LLMCleaner.bat -Jezyk en           interface language: en or pl (alias -Language)
+LLMCleaner.bat -BezAktualizacji    no update check at start (alias -NoUpdateCheck)
 ```
 
 ### Drives
@@ -112,18 +129,18 @@ a letter (EFI, Recovery) are skipped, as are BitLocker-locked volumes. All drive
 drive is always scanned (Windows caches, user profile, Program Files). The other ticked drives are used for the
 Recycle Bin, Steam and Epic libraries, and the *what takes up space* view.
 
-### The plan screen
+### Text mode keys
+
+The first screen asks which drives to scan: `Enter` continues, numbers toggle drives. On the plan screen:
 
 | Key | Action |
 |---|---|
-| `Enter` | go to the summary and the *Uruchomić czyszczenie? [t/N]* (start cleaning?) question |
+| `Enter` | go to the summary and the *start cleaning? [y/N]* question |
 | `3` or `3 7 9` | toggle categories or leftovers by number |
-| `w` | AI describes what each leftover was (marked *AI (może się mylić)*, "AI, may be wrong") |
+| `w` | AI describes what each leftover was |
 | `p` | chat with the assistant; an empty line returns to the plan |
 | `a` | what takes up space on a drive; then `w` lets the AI describe the items |
 | `u` | install the new version (shown only when an update is available) |
-
-The first screen asks which drives to scan: `Enter` continues, numbers toggle drives.
 | `q` | quit without deleting anything |
 
 ### What gets preselected
@@ -144,7 +161,7 @@ was modified in the last 30 days, is smaller than 1 MB, or is on the built-in li
 
 | Path | Contents |
 |---|---|
-| install folder | `LLMCleaner.ps1`, `LLMCleaner.bat`, `Install-AI.ps1`, `config.json` (the model chosen in the installer) |
+| install folder | `LLMCleaner.ps1` (start), `lib\Rdzen.ps1` (scanning, plan, AI, cleaning), `lib\Okno.ps1` (window), `lib\Konsola.ps1` (text mode), `LLMCleaner.bat`, `Install-AI.ps1`, `config.json` (the model chosen in the installer) |
 | `<install folder>\ai\ollama\` | the bundled Ollama engine |
 | `<install folder>\ai\models\` | AI models |
 | `%LOCALAPPDATA%\LLMCleaner\logs\` | one log per run: scan report, chosen plan, results, everything moved to the Recycle Bin |
@@ -160,7 +177,9 @@ about game studios, the model also invented titles. That is why:
 
 - the plan is built by rules and the scanner provides the facts (sizes, dates, registry subkeys),
 - the model only describes and answers, and is told not to add facts that are not in the data,
-- its descriptions are labelled *AI (może się mylić)*.
+- its descriptions are labelled *AI (may be wrong)*,
+- its advice in the disk analysis comes from a fixed list of safe options, and for system and program folders the
+  program sets the advice itself.
 
 | Model | Notes (tested on a GTX 1060 6 GB) |
 |---|---|
@@ -171,16 +190,16 @@ about game studios, the model also invented titles. That is why:
 
 | Problem | Fix |
 |---|---|
-| *Asystent AI nie jest zainstalowany* (AI not installed) | rerun the installer and tick the AI assistant, or run `Install-AI.ps1` from the install folder |
-| *Nie udało się uruchomić Ollamy* (Ollama failed to start) | run `ai\ollama\ollama.exe serve` from the install folder and check the output |
-| *Brak modelu …* (model missing) | `Install-AI.ps1 -Model qwen3:4b-instruct` |
-| `w` / `p` takes minutes | the model probably does not fit into the VRAM (check *Dedicated GPU memory* in Task Manager); close games or other GPU-heavy programs |
+| *The AI assistant is not installed* (*Asystent AI nie jest zainstalowany*) | rerun the installer and tick the AI assistant, or run `Install-AI.ps1` from the install folder |
+| *Could not start Ollama* (*Nie udało się uruchomić Ollamy*) | run `ai\ollama\ollama.exe serve` from the install folder and check the output |
+| *Model … is missing* (*Brak modelu …*) | `Install-AI.ps1 -Model qwen3:4b-instruct` |
+| AI answers take minutes | the model probably does not fit into the VRAM (check *Dedicated GPU memory* in Task Manager); close games or other GPU-heavy programs |
 | Browser cache skipped | close the browser (also from the system tray) and run again |
-| Garbled Polish characters | `LLMCleaner.ps1` must be saved as **UTF-8 with BOM** |
+| Garbled Polish characters | the `.ps1` files must be saved as **UTF-8 with BOM** |
 | Taskbar did not come back | `Ctrl+Shift+Esc` → File → Run new task → `explorer.exe` |
 | A registry key was needed after all | double-click its `.reg` file in `logs\kopie_rejestru\`, or use the *LLMCleaner* System Restore point |
-| *pominięty przez Windows - limit jednego punktu na dobę* | Windows creates at most one restore point per 24 hours by default; the `.reg` backups are still made |
-| App cache skipped (*pominięto - działa: …*) | close the app (also from the system tray) and run again |
+| Restore point *skipped by Windows* (*pominięty przez Windows*) | Windows creates at most one restore point per 24 hours by default; the `.reg` backups are still made |
+| App cache *skipped - running: …* (*pominięto - działa: …*) | close the app (also from the system tray) and run again |
 
 ## Building from source
 
