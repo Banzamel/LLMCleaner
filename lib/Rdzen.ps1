@@ -148,18 +148,28 @@ function Pliki($sciezka) {
     }
 }
 
-function Zmierz($sciezki) {
-    $bajty = 0.0; $n = 0
+# Plik otwarty przez inny program (np. swap.vhdx dzialajacego WSL) - UsunZawartosc go pominie
+function WUzyciu([IO.FileInfo]$f) {
+    try { $f.Open('Open', 'Read', 'None').Dispose(); $false } catch { $true }
+}
+
+# Liczy tylko to, co UsunZawartosc faktycznie usunie: pomija pliki mlodsze niz $minWiekDni
+# i duze pliki w uzyciu (male sprawdzac sie nie oplaca - to tysiace otwarc dla kilku MB).
+function Zmierz($sciezki, $minWiekDni = 0) {
+    $bajty = 0.0; $n = 0; $zajete = 0.0; $zajetePliki = @()
+    $granica = (Get-Date).AddDays(-$minWiekDni)
     foreach ($s in $sciezki) {
-        if (Test-Path -LiteralPath $s -PathType Leaf) {
-            $bajty += (Get-Item -LiteralPath $s -Force).Length; $n++
-            continue
+        if (Test-Path -LiteralPath $s -PathType Leaf) { $pliki = @(Get-Item -LiteralPath $s -Force) }
+        elseif (-not (Test-Path -LiteralPath $s -PathType Container)) { continue }
+        elseif ((Get-Item -LiteralPath $s -Force).Attributes -band $REPARSE) { continue }
+        else { $pliki = Pliki $s }
+        foreach ($f in $pliki) {
+            if ($minWiekDni -gt 0 -and $f.LastWriteTime -gt $granica) { continue }
+            if ($f.Length -ge 10MB -and (WUzyciu $f)) { $zajete += $f.Length; $zajetePliki += $f.Name; continue }
+            $bajty += $f.Length; $n++
         }
-        if (-not (Test-Path -LiteralPath $s -PathType Container)) { continue }
-        if ((Get-Item -LiteralPath $s -Force).Attributes -band $REPARSE) { continue }
-        foreach ($f in Pliki $s) { $bajty += $f.Length; $n++ }
     }
-    @{ Bajty = $bajty; Pliki = $n }
+    @{ Bajty = $bajty; Pliki = $n; Zajete = $zajete; ZajetePliki = $zajetePliki }
 }
 
 # Usuwa ZAWARTOSC katalogu (nie sam katalog) albo pojedynczy plik.
@@ -279,9 +289,9 @@ function ZbudujKategorie {
     $znalezione = if ($grupy) { ($grupy | ForEach-Object { $_.Nazwa }) -join ', ' } else { L 'brak' 'none' }
 
     $k = @(
-        @{ Id = 'temp'; Nazwa = (L 'Pliki tymczasowe (TEMP)' 'Temporary files (TEMP)'); MinWiek = 1
+        @{ Id = 'temp'; Nazwa = (L 'Pliki tymczasowe (TEMP)' 'Temporary files (TEMP)')
            Sciezki = @($env:TEMP, "$WinDir\Temp")
-           Opis = (L 'Pliki tymczasowe programów i instalatorów. Pliki z ostatniej doby są pomijane.' 'Temporary files of programs and installers. Files from the last 24 hours are kept.') }
+           Opis = (L 'Pliki tymczasowe programów i instalatorów. Pliki w użyciu są pomijane.' 'Temporary files of programs and installers. Files in use are skipped.') }
         @{ Id = 'inet'; Nazwa = (L 'Cache internetowy Windows (INetCache)' 'Windows internet cache (INetCache)')
            Sciezki = @("$env:LOCALAPPDATA\Microsoft\Windows\INetCache")
            Opis = (L 'Cache silnika WebView/IE. Odtwarza się sam.' 'WebView/IE engine cache. Rebuilds itself.') }
@@ -372,11 +382,19 @@ function FolderyKosza { foreach ($d in DyskiWybrane) { $p = "$($d.DeviceID)\`$Re
 function SkanujKategorie {
     foreach ($k in $script:Kategorie) {
         Wypisz ("   {0}..." -f $k.Nazwa) 'DarkGray'
-        $k.Blokada = $null
+        $k.Blokada = $null; $k.Uwaga = $null
         $k.Bajty = 0.0
         try {
             switch ($k.Typ) {
-                { $_ -in 'folder', 'winold' } { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
+                'folder' {
+                    $m = Zmierz $k.Sciezki ([int]$k.MinWiek); $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki
+                    if ($m.Zajete) {
+                        $nazwy = ($m.ZajetePliki | Select-Object -First 3) -join ', '
+                        $k.Uwaga = (L 'Pominięto {0} w plikach używanych przez inne programy ({1}) - zamknij je, by to usunąć.' 'Not counted: {0} in files used by other programs ({1}) - close them to remove it.') -f (Rozmiar $m.Zajete), $nazwy
+                        Log "$($k.Id): w uzyciu $(Rozmiar $m.Zajete): $($m.ZajetePliki -join ', ')"
+                    }
+                }
+                'winold' { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
                 'kosz' { $k.Bajty = (Zmierz @(FolderyKosza)).Bajty }
                 'miniatury' { $k.Bajty = [double](PlikiMiniatur | Measure-Object Length -Sum).Sum }
             }

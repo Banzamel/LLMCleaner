@@ -289,7 +289,7 @@ function WypelnijPlan {
     $lv.BeginUpdate()
     $lv.Items.Clear()
     foreach ($k in $script:Kategorie) {
-        $opis = if ($k.Blokada) { "! $($k.Blokada)" } else { $k.Opis }
+        $opis = if ($k.Blokada) { "! $($k.Blokada)" } elseif ($k.Uwaga) { "$($k.Opis) $($k.Uwaga)" } else { $k.Opis }
         $it = New-Object Windows.Forms.ListViewItem($k.Nazwa)
         [void]$it.SubItems.Add((RozmiarKategorii $k))
         [void]$it.SubItems.Add($(if ($k.TylkoRecznie) { L 'na życzenie' 'opt-in' } else { '' }))

@@ -47,6 +47,7 @@ function PokazPlan {
         Write-Host ("  {0} {1,2}. {2,-52} {3,10}" -f $znak, $i, $k.Nazwa, (RozmiarKategorii $k)) -ForegroundColor $kolor
         if ($k.Blokada) { Write-Host "           ! $($k.Blokada)" -ForegroundColor Yellow }
         else { Write-Host "           $(if ($k.TylkoRecznie) { L '(tylko na Twoje życzenie) ' '(only if you choose it) ' })$($k.Opis)" -ForegroundColor DarkGray }
+        if ($k.Uwaga -and -not $k.Blokada) { Write-Host "           ! $($k.Uwaga)" -ForegroundColor Yellow }
     }
     if ($script:Pozostalosci.Count) {
         Write-Host ""

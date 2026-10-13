@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: the plan counted files that cleaning cannot delete.** Category sizes now leave out files the cleanup skips:
+  CBS/DISM logs from the last 7 days and large files used by another program, such as the WSL/Docker `swap.vhdx` in
+  TEMP (often several GB). The plan says how much was left out and which files.
+- TEMP is cleaned completely, not only files older than 24 hours. Files in use are still skipped.
+
 ## 1.3.0 (2026-10-13)
 
 - **New, modern window.** A dark navigation bar on the left (Overview, Cleanup plan, What takes up space, AI assistant,
