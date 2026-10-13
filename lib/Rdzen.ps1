@@ -92,6 +92,14 @@ function Log($t) {
     Add-Content -LiteralPath $LogPlik -Value ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $t) -Encoding UTF8
 }
 
+# Element skanu, ktorego nie da sie odczytac (dziwny folder, wpis rejestru, uszkodzony skrot), jest
+# pomijany zamiast przerywac caly skan. Szczegoly z miejscem bledu ida do logu.
+$script:BledySkanu = 0
+function BladSkanu([string]$co, $blad) {
+    $script:BledySkanu++
+    Log "Pominieto ($co): $($blad.Exception.Message) $($blad.ScriptStackTrace)"
+}
+
 function Rozmiar([double]$b) {
     if ($b -ge 1GB) { return '{0:N2} GB' -f ($b / 1GB) }
     if ($b -ge 1MB) { return '{0:N0} MB' -f ($b / 1MB) }
@@ -128,7 +136,7 @@ function PunktPrzywracania {
 
 # Wszystkie pliki pod katalogiem. Nie wchodzi w junctions ani symlinki.
 function Pliki($sciezka) {
-    $stos = New-Object System.Collections.Stack
+    $stos = [System.Collections.Stack]::new()
     $stos.Push([IO.DirectoryInfo]$sciezka)
     while ($stos.Count) {
         $d = $stos.Pop()
@@ -172,8 +180,8 @@ function UsunZawartosc($sciezka, $minWiekDni = 0) {
     if ($korzen.Attributes -band $REPARSE) { return @{ Bajty = 0.0; Bledy = 0 } }
 
     $granica = (Get-Date).AddDays(-$minWiekDni)
-    $katalogi = New-Object System.Collections.Generic.List[IO.DirectoryInfo]
-    $stos = New-Object System.Collections.Stack
+    $katalogi = [System.Collections.Generic.List[IO.DirectoryInfo]]::new()
+    $stos = [System.Collections.Stack]::new()
     $stos.Push($korzen)
     $licznik = 0
 
@@ -365,12 +373,15 @@ function SkanujKategorie {
     foreach ($k in $script:Kategorie) {
         Wypisz ("   {0}..." -f $k.Nazwa) 'DarkGray'
         $k.Blokada = $null
-        switch ($k.Typ) {
-            { $_ -in 'folder', 'winold' } { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
-            'kosz' { $k.Bajty = (Zmierz @(FolderyKosza)).Bajty }
-            'miniatury' { $k.Bajty = [double](PlikiMiniatur | Measure-Object Length -Sum).Sum }
-            default { $k.Bajty = 0.0 }
+        $k.Bajty = 0.0
+        try {
+            switch ($k.Typ) {
+                { $_ -in 'folder', 'winold' } { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
+                'kosz' { $k.Bajty = (Zmierz @(FolderyKosza)).Bajty }
+                'miniatury' { $k.Bajty = [double](PlikiMiniatur | Measure-Object Length -Sum).Sum }
+            }
         }
+        catch { BladSkanu "kategoria $($k.Id)" $_ }
         if ($k.Procesy -and (Get-Process $k.Procesy)) { $k.Blokada = L 'uruchomiona przeglądarka - zamknij ją przed czyszczeniem' 'a browser is running - close it before cleaning' }
     }
 }
@@ -380,7 +391,7 @@ function KatalogPobranych { FolderUzytkownika '{374DE290-123F-4565-9164-39C4925E
 function SkanujDysk {
     $profil = $env:USERPROFILE
     $gorne = @{}; $appdata = @{}
-    $duze = New-Object System.Collections.Generic.List[object]
+    $duze = [System.Collections.Generic.List[object]]::new()
     $n = 0
 
     foreach ($f in Pliki $profil) {
@@ -410,9 +421,9 @@ function SkanujDysk {
     $programy = Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
                                  'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
                                  "$HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" |
-        Where-Object { $_.DisplayName -and $_.EstimatedSize } |
-        Sort-Object { [double]$_.EstimatedSize } -Descending | Select-Object -First 12 |
-        ForEach-Object { @{ nazwa = $_.DisplayName; rozmiar = (Rozmiar ([double]$_.EstimatedSize * 1KB)); zainstalowano = $_.InstallDate } }
+        Where-Object { $_.DisplayName -and ($_.EstimatedSize -as [double]) } |
+        Sort-Object { $_.EstimatedSize -as [double] } -Descending | Select-Object -First 12 |
+        ForEach-Object { @{ nazwa = $_.DisplayName; rozmiar = (Rozmiar (($_.EstimatedSize -as [double]) * 1KB)); zainstalowano = $_.InstallDate } }
 
     $hib = Get-Item -LiteralPath "$Sys\hiberfil.sys" -Force
     @{
@@ -488,7 +499,7 @@ function KluczeOdinstalowania {
 # Martwe wpisy na liscie programow: deinstalator i folder instalacji nie istnieja.
 # Wpisy MSI pomijamy - ich usuniecie rozspojniloby baze Instalatora Windows.
 function MartweWpisy($wpisy) {
-    foreach ($w in $wpisy) {
+    foreach ($w in $wpisy) { try {
         $v = $w.V
         if ($v.SystemComponent -eq 1 -or $v.WindowsInstaller -eq 1 -or "$($v.UninstallString)" -match 'msiexec') { continue }
         $exe = SciezkaPliku $v.UninstallString
@@ -499,13 +510,13 @@ function MartweWpisy($wpisy) {
            Pewnosc = $(if ($loc) { 'wysoka' } else { 'srednia' })
            Dlaczego = $(if ($loc) { L 'Martwy wpis na liście programów: deinstalator nie istnieje, folder instalacji też nie.' 'Dead entry in the program list: the uninstaller and the install folder are both gone.' }
                         else { L 'Martwy wpis na liście programów: deinstalator nie istnieje.' 'Dead entry in the program list: the uninstaller is gone.' }) }
-    }
+    } catch { BladSkanu "wpis $($w.Klucz)" $_ } }
 }
 
 function ZainstalowaneProgramy($wpisy) {
-    $tokeny = New-Object 'System.Collections.Generic.HashSet[string]'
-    $nazwy = New-Object System.Collections.Generic.List[string]
-    $sciezki = New-Object System.Collections.Generic.List[string]
+    $tokeny = [System.Collections.Generic.HashSet[string]]::new()
+    $nazwy = [System.Collections.Generic.List[string]]::new()
+    $sciezki = [System.Collections.Generic.List[string]]::new()
     function Dodaj([string]$tekst) { foreach ($x in Tokeny $tekst) { [void]$tokeny.Add($x) }; $n = Normalizuj $tekst; if ($n.Length -ge 4) { $nazwy.Add($n) } }
     function DodajSciezke([string]$p) {
         if (-not $p) { return }
@@ -522,7 +533,9 @@ function ZainstalowaneProgramy($wpisy) {
     $appx = if ($InnyUzytkownik) { Get-AppxPackage -User $UzytkownikSid } else { Get-AppxPackage }
     foreach ($a in $appx) { Dodaj $a.Name; DodajSciezke $a.InstallLocation }
     foreach ($g in SteamGry) { Dodaj $g }
-    foreach ($p in Get-Process) { if ($p.Path) { DodajSciezke $p.Path; Dodaj ([IO.Path]::GetFileNameWithoutExtension($p.Path)) } }
+    foreach ($p in Get-Process) {
+        if ($p.Path) { try { DodajSciezke $p.Path; Dodaj ([IO.Path]::GetFileNameWithoutExtension($p.Path)) } catch { BladSkanu "proces $($p.Path)" $_ } }
+    }
     foreach ($s in Get-CimInstance Win32_Service) { DodajSciezke (SciezkaPliku $s.PathName) }
     # Skroty w menu Start i na pulpicie - lapia programy przenosne bez wpisu w rejestrze
     $sh = New-Object -ComObject WScript.Shell
@@ -530,8 +543,8 @@ function ZainstalowaneProgramy($wpisy) {
                    (FolderUzytkownika 'Desktop' "$env:USERPROFILE\Desktop"), "$env:PUBLIC\Desktop") {
         foreach ($l in Get-ChildItem -LiteralPath $d -Recurse -Filter *.lnk -Force) {
             Dodaj $l.BaseName
-            $t = $sh.CreateShortcut($l.FullName).TargetPath
-            if ($t) { DodajSciezke $t }
+            try { $t = $sh.CreateShortcut($l.FullName).TargetPath; if ($t) { DodajSciezke $t } }
+            catch { BladSkanu "skrot $($l.FullName)" $_ }
         }
     }
     @{ Tokeny = $tokeny; Nazwy = $nazwy; Sciezki = $sciezki }
@@ -554,7 +567,12 @@ function ZmierzFolder($p) {
         $b += $f.Length; if ($f.LastWriteTime -gt $ost) { $ost = $f.LastWriteTime }
         if (-not $exe -and $f.Extension -eq '.exe') { $exe = $true }
     }
-    if ($ost -eq [datetime]::MinValue) { $ost = (Get-Item -LiteralPath $p -Force).LastWriteTime }
+    if ($ost -eq [datetime]::MinValue) {
+        # Folder pusty albo nieczytelny. Gdy nie da sie odczytac nawet jego daty, traktujemy go jak
+        # swiezy - nieznany folder nie moze trafic do planu jako stary
+        $ost = (Get-Item -LiteralPath $p -Force).LastWriteTime
+        if ($ost -isnot [datetime]) { $ost = Get-Date }
+    }
     @{ Bajty = $b; Ostatnio = $ost; MaExe = $exe }
 }
 
@@ -630,7 +648,7 @@ function SkanujPozostalosci {
     $martweKlucze = @($martwe | ForEach-Object { $_.Sciezka })
     $zainst = ZainstalowaneProgramy @($wpisy | Where-Object { $_.Klucz -notin $martweKlucze })
     $teraz = Get-Date
-    $wyniki = New-Object System.Collections.Generic.List[object]
+    $wyniki = [System.Collections.Generic.List[object]]::new()
 
     # Foldery programow
     $korzenie = @(
@@ -639,18 +657,21 @@ function SkanujPozostalosci {
         @{ P = $env:ProgramData; Gra = $false }, @{ P = $env:ProgramFiles; Gra = $false }, @{ P = ${env:ProgramFiles(x86)}; Gra = $false },
         @{ P = "$(FolderUzytkownika 'Personal' "$env:USERPROFILE\Documents")\My Games"; Gra = $true }
         @{ P = (FolderUzytkownika '{4C5C32FF-BB9D-43b0-B5B4-2D72E54EAAA4}' "$env:USERPROFILE\Saved Games"); Gra = $true })
-    $wszystkieNazwy = New-Object 'System.Collections.Generic.HashSet[string]'
+    $wszystkieNazwy = [System.Collections.Generic.HashSet[string]]::new()
     $doSprawdzenia = @()
     foreach ($k in $korzenie) {
         foreach ($d in Get-ChildItem -LiteralPath $k.P -Directory -Force) {
-            [void]$wszystkieNazwy.Add((Normalizuj $d.Name))
-            if ($d.Attributes -band $REPARSE -or $d.Attributes -band [IO.FileAttributes]::System) { continue }
-            if (Pomijana $d.Name) { continue }
-            if (NalezyDoProgramu $d.Name $d.FullName $zainst) { continue }
-            $doSprawdzenia += @{ D = $d; Zapisy = $k.Gra }
+            try {
+                [void]$wszystkieNazwy.Add((Normalizuj $d.Name))
+                if ($d.Attributes -band $REPARSE -or $d.Attributes -band [IO.FileAttributes]::System) { continue }
+                if (Pomijana $d.Name) { continue }
+                if (NalezyDoProgramu $d.Name $d.FullName $zainst) { continue }
+                $doSprawdzenia += @{ D = $d; Zapisy = $k.Gra }
+            }
+            catch { BladSkanu "folder $($d.FullName)" $_ }
         }
     }
-    foreach ($c in $doSprawdzenia) {
+    foreach ($c in $doSprawdzenia) { try {
         Postep ("   {0}" -f $c.D.FullName)
         $m = ZmierzFolder $c.D.FullName
         $dni = ($teraz - $m.Ostatnio).TotalDays
@@ -662,19 +683,21 @@ function SkanujPozostalosci {
             Dlaczego = $(if ($c.Zapisy) { L 'Zapisy/ustawienia gry - może chcesz je zachować.' 'Game saves/settings - you may want to keep them.' }
                         elseif ($m.MaExe) { L 'Brak zainstalowanego programu o tej nazwie, ale folder zawiera pliki .exe - może to program przenośny.' 'No installed program with this name, but the folder contains .exe files - it may be a portable program.' }
                         else { L 'Brak zainstalowanego programu o tej nazwie.' 'No installed program with this name.' }) })
-    }
+    } catch { BladSkanu "folder $($c.D.FullName)" $_ } }
 
     # Gry
-    foreach ($g in @(SteamOsierocone) + @(EpicOsierocone)) {
-        $m = ZmierzFolder $g.Sciezka
-        $g.Bajty = $m.Bajty; $g.Ostatnio = $m.Ostatnio
-        $wyniki.Add($g)
+    $gry = @()
+    try { $gry += @(SteamOsierocone) } catch { BladSkanu 'Steam' $_ }
+    try { $gry += @(EpicOsierocone) } catch { BladSkanu 'Epic' $_ }
+    foreach ($g in $gry) {
+        try { $m = ZmierzFolder $g.Sciezka; $g.Bajty = $m.Bajty; $g.Ostatnio = $m.Ostatnio; $wyniki.Add($g) }
+        catch { BladSkanu "gra $($g.Sciezka)" $_ }
     }
 
     # Rejestr: klucze producentow bez programu i bez folderu o tej nazwie
-    $rej = New-Object System.Collections.Generic.List[object]
+    $rej = [System.Collections.Generic.List[object]]::new()
     foreach ($r in "$HKCUNazwa\Software", 'HKEY_LOCAL_MACHINE\SOFTWARE', 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node') {
-        foreach ($k in Get-ChildItem "Registry::$r") {
+        foreach ($k in Get-ChildItem "Registry::$r") { try {
             $n = $k.PSChildName
             if (Pomijana $n) { continue }
             if (NalezyDoProgramu $n $null $zainst) { continue }
@@ -686,7 +709,7 @@ function SkanujPozostalosci {
             $dlaczego = L 'Klucz producenta bez zainstalowanego programu i folderu.' 'Vendor key with no installed program or folder.'
             if ($zawiera) { $dlaczego += ((L ' Zawiera: {0}.' ' Contains: {0}.') -f ($zawiera -join ', ')) }
             $rej.Add(@{ Typ = 'rejestr'; Sciezka = "$r\$n"; Nazwa = $n; Bajty = 0.0; Pewnosc = 'srednia'; Zawiera = $zawiera; Dlaczego = $dlaczego })
-        }
+        } catch { BladSkanu "klucz $r\$($k.PSChildName)" $_ } }
     }
 
     @($wyniki | Sort-Object { $_.Bajty } -Descending) + @($martwe) + @($rej)
@@ -695,13 +718,15 @@ function SkanujPozostalosci {
 # Caly skan: kategorie, profil, pozostalosci i plan. Wynik w $script:Kategorie/Pozostalosci/Dysk.
 function SkanujWszystko {
     Log "Dyski: $($script:WybraneDyski -join ', '), uzytkownik: $UzytkownikSid$(if ($InnyUzytkownik) { ' (inne konto niz administrator)' })"
+    $script:BledySkanu = 0
     $script:WolnePrzed = WolneC
-    $script:Kategorie = @(ZbudujKategorie)
+    try { $script:Kategorie = @(ZbudujKategorie) } catch { BladSkanu 'kategorie' $_; $script:Kategorie = @() }
     SkanujKategorie
     Wypisz (L '   Przeglądam profil użytkownika (duże pliki, AppData)...' '   Scanning the user profile (large files, AppData)...') 'DarkGray'
-    $script:Dysk = SkanujDysk
+    try { $script:Dysk = SkanujDysk }
+    catch { BladSkanu 'profil' $_; $script:Dysk = @{ Kandydaci = @(); Profil = @(); AppData = @(); Programy = @(); System = @{}; Dyski = @() } }
     Wypisz (L '   Szukam pozostałości po odinstalowanych programach i grach...' '   Looking for leftovers of uninstalled programs and games...') 'DarkGray'
-    $poz = @(SkanujPozostalosci)
+    try { $poz = @(SkanujPozostalosci) } catch { BladSkanu 'pozostalosci' $_; $poz = @() }
     # Duze pliki z Pobranych i spoza AppData - do decyzji uzytkownika, nigdy zaznaczone z gory
     foreach ($c in $script:Dysk.Kandydaci) {
         $poz += @{ Typ = 'plik'; Sciezka = $c.Sciezka; Nazwa = (Split-Path $c.Sciezka -Leaf); Bajty = $c.Bajty
@@ -714,6 +739,9 @@ function SkanujWszystko {
     KoniecPostepu ((L '   Znaleziono pozostałości: {0} folderów, {1} plików, {2} wpisów rejestru.' '   Leftovers found: {0} folders, {1} files, {2} registry entries.') -f
         @($poz | Where-Object { $_.Typ -eq 'folder' }).Count, @($poz | Where-Object { $_.Typ -eq 'plik' }).Count,
         @($poz | Where-Object { $_.Typ -eq 'rejestr' }).Count)
+    if ($script:BledySkanu) {
+        Wypisz ((L '   Pominięto elementy, których nie dało się odczytać: {0} (szczegóły w logu: {1})' '   Skipped items that could not be read: {0} (details in the log: {1})') -f $script:BledySkanu, $LogPlik) 'Yellow'
+    }
     UlozPlan
     Log "Raport: $(RaportJson)"
 }
@@ -763,7 +791,7 @@ function Podsumowanie {
     $wybrane = @($script:Kategorie | Where-Object { $_.Wybrana })
     $wybranePoz = @($script:Pozostalosci | Where-Object { $_.Wybrana })
     if (-not $wybrane.Count -and -not $wybranePoz.Count) { return $null }
-    $linie = New-Object System.Collections.Generic.List[object]
+    $linie = [System.Collections.Generic.List[object]]::new()
     function Dodaj($t, $k = 'Gray') { $linie.Add(@{ T = $t; K = $k }) }
     if ($wybrane.Count) {
         Dodaj (L 'Zostanie wyczyszczone:' 'To be cleaned:') 'White'
@@ -978,8 +1006,12 @@ function WyjasnijPozostalosci {
 # Rozmowa: $script:Rozmowa trzyma historie; Zapytaj zwraca odpowiedz albo $null
 $script:Rozmowa = $null
 function ZacznijRozmowe {
-    $script:Rozmowa = New-Object System.Collections.ArrayList
-    [void]$script:Rozmowa.Add(@{ role = 'system'; content = "$SysCzat`n`n$(L 'RAPORT I PLAN' 'REPORT AND PLAN'):`n$(RaportJson)" })
+    $script:Rozmowa = [System.Collections.ArrayList]::new()
+    # Czat dziala tez przed skanem - model wie wtedy, ze nie zna jeszcze plikow komputera
+    $raport = if ($script:Dysk) { RaportJson } else {
+        L 'Skan nie został jeszcze wykonany - nie znasz plików tego komputera. Odpowiadaj ogólnie, a przy pytaniach o konkretne pliki, foldery lub plan poproś użytkownika, żeby najpierw kliknął „Skanuj”.' 'No scan has been run yet - you do not know the files on this computer. Answer in general terms; for questions about specific files, folders or the plan, ask the user to click "Scan" first.'
+    }
+    [void]$script:Rozmowa.Add(@{ role = 'system'; content = "$SysCzat`n`n$(L 'RAPORT I PLAN' 'REPORT AND PLAN'):`n$raport" })
 }
 function Zapytaj([string]$pytanie) {
     if (-not (ZapewnijModel)) { return $null }
@@ -1099,7 +1131,7 @@ function SkanujDyskAnaliza([string]$litera) {
         $rodzic = [IO.Path]::GetDirectoryName($f.Sciezka)
         if ($rodzic -and $wg.ContainsKey($rodzic)) { $duzeDzieci[$rodzic] += [double]$f.Bajty }
     }
-    $pozycje = New-Object System.Collections.Generic.List[object]
+    $pozycje = [System.Collections.Generic.List[object]]::new()
     foreach ($f in $w.Foldery) {
         $dzieci = [double]$duzeDzieci[$f.Sciezka]
         if ($dzieci -eq 0) { $b = [double]$f.Bajty; $reszta = $false }
