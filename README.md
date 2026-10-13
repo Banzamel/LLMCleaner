@@ -100,14 +100,17 @@ deletes anything, and *LLMCleaner (console)* for the text mode.
 
 ### The window
 
-1. **Drives** at the top: tick the drives to scan and click **Scan**.
-2. **Cleanup plan** tab: tick or untick categories and leftovers. Hover over an item for its full description.
+The pages are in the navigation bar on the left.
+
+1. **Overview**: tick the drives to scan (each tile shows how full the drive is) and click **Scan**. Afterwards the
+   page shows how much space can be freed, with **View the cleanup plan**.
+2. **Cleanup plan**: tick or untick categories and leftovers. Hover over an item for its full description.
    - **AI: what were the leftovers?** fills in what each leftover was (marked *AI (may be wrong)*),
    - **Clean selected...** shows a summary and asks for confirmation.
-3. **What takes up space** tab: pick a drive, click **Analyse**, then **AI: describe and advise**. Double-click an
+3. **What takes up space**: pick a drive, click **Analyse**, then **AI: describe and advise**. Double-click an
    item to open it in File Explorer.
-4. **AI assistant** tab: ask about the plan, folders, programs or games.
-5. **Log** tab: everything the program does, also written to the log file.
+4. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
+5. **Log**: everything the program does, also written to the log file.
 
 ### Parameters
 

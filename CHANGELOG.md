@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.0 (2026-10-13)
+
+- **New, modern window.** A dark navigation bar on the left (Overview, Cleanup plan, What takes up space, AI assistant,
+  Log) instead of tabs, pages built from cards with rounded corners, flat buttons and taller list rows.
+- **Overview page**: drive tiles with a usage bar (click a tile to tick it), one big **Scan** button, the current scan
+  step, and after the scan a summary: how much can be freed, categories with data and program leftovers.
+  With many partitions the tiles wrap and scroll; nothing covers their names any more.
+- The chat field shows a hint, and the Preview mode and AI status are shown in the navigation bar.
+- **Fixed: the scan stopped with "Argument types do not match"** on some PCs. A PowerShell 5.1 quirk with lists
+  created by `New-Object`; they are now created with `::new()`.
+- An item that cannot be read (an odd folder, registry key or broken shortcut) is skipped and logged instead of
+  stopping the whole scan. The Log page shows how many items were skipped.
+- The AI chat works before a scan too (general answers); the chat page says that a scan is needed for questions about
+  the files on this computer.
+
 ## 1.2.1 (2026-10-12)
 
 - Small junk is no longer skipped: every non-empty cleanup category is preselected (previously 20 MB or more),
