@@ -274,6 +274,7 @@ function AktualizujPrzeglad {
     $u.StatZaznaczone.Text = Rozmiar $suma
     $u.StatKategorie.Text = "$(@($script:Kategorie | Where-Object { $_.Bajty -gt 0 }).Count)"
     $u.StatPozostalosci.Text = "$(@($script:Pozostalosci).Count)"
+    $u.StatZablokowane.Text = Rozmiar ([double](@($script:Kategorie | ForEach-Object { [double]$_.Zablokowane }) | Measure-Object -Sum).Sum)
     $u.Statystyki.Visible = $true
 }
 
@@ -292,6 +293,7 @@ function WypelnijPlan {
         $opis = if ($k.Blokada) { "! $($k.Blokada)" } elseif ($k.Uwaga) { "$($k.Opis) $($k.Uwaga)" } else { $k.Opis }
         $it = New-Object Windows.Forms.ListViewItem($k.Nazwa)
         [void]$it.SubItems.Add((RozmiarKategorii $k))
+        [void]$it.SubItems.Add($(if ($k.Zablokowane) { Rozmiar $k.Zablokowane } else { '' }))
         [void]$it.SubItems.Add($(if ($k.TylkoRecznie) { L 'na życzenie' 'opt-in' } else { '' }))
         [void]$it.SubItems.Add($opis)
         $it.ToolTipText = $opis
@@ -307,6 +309,7 @@ function WypelnijPlan {
         if ($p.Ai) { $opis += "  |  $EtykietaAi`: $($p.Ai)" }
         $it = New-Object Windows.Forms.ListViewItem($pokaz)
         [void]$it.SubItems.Add($(if ($p.Typ -ne 'rejestr') { Rozmiar $p.Bajty } else { L 'rejestr' 'registry' }))
+        [void]$it.SubItems.Add('')
         [void]$it.SubItems.Add((NazwaPewnosci $p.Pewnosc))
         [void]$it.SubItems.Add($opis)
         $it.ToolTipText = "$pokaz`n$opis"
@@ -407,7 +410,8 @@ function StronaPrzeglad {
     $staty = Kontrolka FlowLayoutPanel @{ Location = (New-Object Drawing.Point(22, 126)); Size = (New-Object Drawing.Size(856, 74)); WrapContents = $false; BackColor = $s.Karta; Visible = $false; Anchor = 'Top, Left, Right' }
     foreach ($st in @(@{ K = 'StatZaznaczone'; T = (L 'zaznaczone do czyszczenia' 'selected for cleaning') },
                       @{ K = 'StatKategorie'; T = (L 'kategorie z danymi' 'categories with data') },
-                      @{ K = 'StatPozostalosci'; T = (L 'pozostałości po programach' 'program leftovers') })) {
+                      @{ K = 'StatPozostalosci'; T = (L 'pozostałości po programach' 'program leftovers') },
+                      @{ K = 'StatZablokowane'; T = (L 'zablokowane (pliki w użyciu)' 'locked (files in use)') })) {
         $kaf = Karta @{ Size = (New-Object Drawing.Size(190, 70)); BackColor = $s.Kafelek; Margin = (New-Object Windows.Forms.Padding(0, 0, 12, 0)) } -BezRamki
         $w = Etykieta '-' @{ Location = (New-Object Drawing.Point(14, 8)); Font = $s.Liczba; BackColor = $s.Kafelek }
         $o = Etykieta $st.T @{ Location = (New-Object Drawing.Point(15, 40)); Font = $s.Mala; ForeColor = $s.TekstSlaby; BackColor = $s.Kafelek }
@@ -442,8 +446,9 @@ function StronaPlan {
 
     $k = Karta @{ Dock = 'Fill'; Padding = (New-Object Windows.Forms.Padding(10, 10, 4, 10)) }
     $lv = Lista @{ CheckBoxes = $true; HideSelection = $false }
-    [void]$lv.Columns.Add((L 'Pozycja' 'Item'), 430)
-    [void]$lv.Columns.Add((L 'Rozmiar' 'Size'), 90, 'Right')
+    [void]$lv.Columns.Add((L 'Pozycja' 'Item'), 400)
+    [void]$lv.Columns.Add((L 'Do usunięcia' 'Deletable'), 95, 'Right')
+    [void]$lv.Columns.Add((L 'Zablokowane' 'Locked'), 95, 'Right')
     [void]$lv.Columns.Add((L 'Pewność' 'Confidence'), 90)
     [void]$lv.Columns.Add((L 'Opis' 'Description'), 560)
     $script:UI.GrKategorie = New-Object Windows.Forms.ListViewGroup((L 'Kategorie czyszczenia (odtwarzają się same)' 'Cleanup categories (they rebuild themselves)'))

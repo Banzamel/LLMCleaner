@@ -148,15 +148,34 @@ function Pliki($sciezka) {
     }
 }
 
-# Plik otwarty przez inny program (np. swap.vhdx dzialajacego WSL) - UsunZawartosc go pominie
-function WUzyciu([IO.FileInfo]$f) {
-    try { $f.Open('Open', 'Read', 'None').Dispose(); $false } catch { $true }
+# Czy pliku nie da sie teraz usunac: otwarty przez inny program bez zgody na usuniecie
+# (np. swap.vhdx dzialajacego WSL) albo brak uprawnien. Otwiera z samym prawem DELETE - tak jak
+# usuwanie - wiec nie czyta danych i antywirus go nie skanuje (~0,1 ms na plik zamiast ~2 ms).
+function KompilujBlokade {
+    if ('LlmBlokada' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class LlmBlokada {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateFileW(string path, uint access, uint share, IntPtr sec, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    public static bool Zablokowany(string path) {
+        // DELETE, FILE_SHARE_READ|WRITE|DELETE, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT
+        IntPtr h = CreateFileW(@"\\?\" + path, 0x10000, 7, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
+        if (h == new IntPtr(-1)) return true;
+        CloseHandle(h);
+        return false;
+    }
+}
+'@
 }
 
-# Liczy tylko to, co UsunZawartosc faktycznie usunie: pomija pliki mlodsze niz $minWiekDni
-# i duze pliki w uzyciu (male sprawdzac sie nie oplaca - to tysiace otwarc dla kilku MB).
+# Bajty - to, co UsunZawartosc faktycznie usunie; Zajete - pliki, ktorych teraz usunac sie nie da.
+# Pliki mlodsze niz $minWiekDni nie naleza do kategorii i nie sa liczone wcale.
 function Zmierz($sciezki, $minWiekDni = 0) {
-    $bajty = 0.0; $n = 0; $zajete = 0.0; $zajetePliki = @()
+    KompilujBlokade
+    $bajty = 0.0; $n = 0; $zajete = 0.0; $zajetePliki = [System.Collections.Generic.List[object]]::new()
     $granica = (Get-Date).AddDays(-$minWiekDni)
     foreach ($s in $sciezki) {
         if (Test-Path -LiteralPath $s -PathType Leaf) { $pliki = @(Get-Item -LiteralPath $s -Force) }
@@ -165,7 +184,7 @@ function Zmierz($sciezki, $minWiekDni = 0) {
         else { $pliki = Pliki $s }
         foreach ($f in $pliki) {
             if ($minWiekDni -gt 0 -and $f.LastWriteTime -gt $granica) { continue }
-            if ($f.Length -ge 10MB -and (WUzyciu $f)) { $zajete += $f.Length; $zajetePliki += $f.Name; continue }
+            if ([LlmBlokada]::Zablokowany($f.FullName)) { $zajete += $f.Length; $zajetePliki.Add($f); continue }
             $bajty += $f.Length; $n++
         }
     }
@@ -383,15 +402,17 @@ function SkanujKategorie {
     foreach ($k in $script:Kategorie) {
         Wypisz ("   {0}..." -f $k.Nazwa) 'DarkGray'
         $k.Blokada = $null; $k.Uwaga = $null
-        $k.Bajty = 0.0
+        $k.Bajty = 0.0; $k.Zablokowane = 0.0
         try {
             switch ($k.Typ) {
                 'folder' {
-                    $m = Zmierz $k.Sciezki ([int]$k.MinWiek); $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki
+                    $m = Zmierz $k.Sciezki ([int]$k.MinWiek); $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki; $k.Zablokowane = $m.Zajete
                     if ($m.Zajete) {
-                        $nazwy = ($m.ZajetePliki | Select-Object -First 3) -join ', '
-                        $k.Uwaga = (L 'Pominięto {0} w plikach używanych przez inne programy ({1}) - zamknij je, by to usunąć.' 'Not counted: {0} in files used by other programs ({1}) - close them to remove it.') -f (Rozmiar $m.Zajete), $nazwy
-                        Log "$($k.Id): w uzyciu $(Rozmiar $m.Zajete): $($m.ZajetePliki -join ', ')"
+                        $najwieksze = @($m.ZajetePliki | Sort-Object Length -Descending)
+                        $nazwy = ($najwieksze | Select-Object -First 3 | ForEach-Object { $_.Name }) -join ', '
+                        if ($najwieksze.Count -gt 3) { $nazwy += (L ' i {0} innych' ' and {0} more') -f ($najwieksze.Count - 3) }
+                        $k.Uwaga = (L 'Razem {0}: do usunięcia {1}, zablokowane {2} - pliki używane przez działające programy ({3}). Zamknij je, żeby usunąć resztę.' 'Total {0}: {1} can be deleted, {2} is locked - files used by running programs ({3}). Close them to delete the rest.') -f (Rozmiar ($m.Bajty + $m.Zajete)), (Rozmiar $m.Bajty), (Rozmiar $m.Zajete), $nazwy
+                        Log "$($k.Id): zablokowane $(Rozmiar $m.Zajete) w $($najwieksze.Count) plikach, najwieksze: $nazwy"
                     }
                 }
                 'winold' { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
@@ -774,6 +795,8 @@ function UlozPlan {
     foreach ($p in $script:Pozostalosci) { $p.Wybrana = $p.Pewnosc -in 'wysoka', 'srednia' }
 }
 
+function SumaZablokowanych { [double](@($script:Kategorie | Where-Object { $_.Wybrana } | ForEach-Object { [double]$_.Zablokowane }) | Measure-Object -Sum).Sum }
+
 function SumaZaznaczonych { [double](@($script:Kategorie) + @($script:Pozostalosci) | Where-Object { $_.Wybrana } | ForEach-Object { [double]$_.Bajty } | Measure-Object -Sum).Sum }
 
 function RaportJson {
@@ -822,6 +845,8 @@ function Podsumowanie {
         Dodaj ((L 'Zwolnione miejsce   : ok. {0}' 'Space freed         : about {0}') -f (Rozmiar $suma)) 'Green'
         Dodaj ((L 'Wolne na {1} teraz  : {0}' 'Free on {1} now     : {0}') -f (Rozmiar $script:WolnePrzed), $Sys)
         Dodaj ((L 'Wolne na {1} po     : ok. {0}' 'Free on {1} after   : about {0}') -f (Rozmiar ($script:WolnePrzed + $suma)), $Sys)
+        $zablokowane = SumaZablokowanych
+        if ($zablokowane) { Dodaj ((L 'Zablokowane         : {0} (pliki w użyciu - nie zostaną usunięte, nie są wliczone)' 'Locked              : {0} (files in use - not deleted, not included)') -f (Rozmiar $zablokowane)) 'Yellow' }
         Dodaj (L '(część plików może być w użyciu - wtedy zostaną pominięte i zysk będzie mniejszy)' '(some files may be in use - they are skipped and the gain will be smaller)') 'DarkGray'
     }
     $doKosza = @($wybranePoz | Where-Object { $_.Typ -ne 'rejestr' })

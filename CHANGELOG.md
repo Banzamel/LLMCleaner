@@ -3,8 +3,12 @@
 ## Unreleased
 
 - **Fixed: the plan counted files that cleaning cannot delete.** Category sizes now leave out files the cleanup skips:
-  CBS/DISM logs from the last 7 days and large files used by another program, such as the WSL/Docker `swap.vhdx` in
-  TEMP (often several GB). The plan says how much was left out and which files.
+  CBS/DISM logs from the last 7 days and files locked by another program, such as the WSL/Docker `swap.vhdx` in TEMP
+  (often several GB).
+- **Locked files are shown separately.** The plan has a *Locked* column next to *Deletable*, the description gives the
+  total split into deletable and locked with the largest locked files, the overview has a *locked* tile and the summary
+  before cleaning lists the locked size. Every file is checked the way deletion opens it (DELETE access only), which is
+  fast and does not trigger the antivirus.
 - TEMP is cleaned completely, not only files older than 24 hours. Files in use are still skipped.
 
 ## 1.3.0 (2026-10-13)
