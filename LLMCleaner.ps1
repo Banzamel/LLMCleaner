@@ -38,7 +38,7 @@ param(
     [string]$Sid      # konto, ktore uruchomilo program (ustawia samo podnoszenie uprawnien)
 )
 
-$Wersja = '1.3.0'
+$Wersja = '1.3.1'
 $ErrorActionPreference = 'SilentlyContinue'
 $AppDir = $PSScriptRoot
 

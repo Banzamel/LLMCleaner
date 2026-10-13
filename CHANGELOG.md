@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 (2026-10-13)
 
 - **Fixed: the plan counted files that cleaning cannot delete.** Category sizes now leave out files the cleanup skips:
   CBS/DISM logs from the last 7 days and files locked by another program, such as the WSL/Docker `swap.vhdx` in TEMP
