@@ -115,6 +115,8 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
 ; Created by Install-AI.ps1: the AI engine, the models and the chosen model
 Type: filesandordirs; Name: "{app}\ai"
 Type: files; Name: "{app}\config.json"
+; Logs, window settings and the .reg/.xml backups in %LOCALAPPDATA%\LLMCleaner
+Type: filesandordirs; Name: "{localappdata}\{#AppName}"
 
 [Code]
 var

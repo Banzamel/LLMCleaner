@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.3 (2026-10-14)
+
+- **Fixed: cleaning stopped with an error after the Docker step when it freed more than about 2.1 GB.** The cleanup
+  itself ran, but the freed space could not be counted and the remaining steps did not run. The same fix covers the
+  Windows.old and WinSxS steps.
+- **Docker - everything** now really empties Docker: it stops and removes all containers, including running ones,
+  then removes all images, volumes (including databases in them), networks and the build cache. Its size is now the
+  total space Docker uses, with a breakdown per type.
+- **Uninstalling also removes `%LOCALAPPDATA%\LLMCleaner`**: logs, window settings and the `.reg`/`.xml` backups.
+
 ## 1.5.2 (2026-10-14)
 
 - **Fixed: the window crashed while drawing the cleanup plan when one item was larger than about 2.1 GB** (for example
