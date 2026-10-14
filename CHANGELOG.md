@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.4 (2026-10-14)
+
+- **Fixed: Docker - everything left named volumes behind.** Since Docker 23, `docker system prune --volumes` removes
+  only anonymous volumes, so LLMCleaner now also removes every remaining volume with `docker volume rm`.
+- **Docker - everything** also clears the build history (the *Builds* list in Docker Desktop) with
+  `docker buildx history rm --all` for every builder.
+
 ## 1.5.3 (2026-10-14)
 
 - **Fixed: cleaning stopped with an error after the Docker step when it freed more than about 2.1 GB.** The cleanup
