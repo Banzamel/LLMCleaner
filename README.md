@@ -121,7 +121,8 @@ The pages are in the navigation bar on the left.
 3. **What takes up space**: pick a drive, click **Analyse**, then **AI: describe and advise**. Double-click an
    item to open it in File Explorer.
 4. **Startup apps**: the switch on each row turns a program on or off at once, like in Task Manager. Protected items
-   are read-only. **AI: what is it?** describes the programs. The change takes effect at the next sign-in.
+   are read-only. The bin next to the switch removes an entry permanently, with a `.reg` / `.xml` backup (shortcuts go
+   to the Recycle Bin). **AI: what is it?** describes the programs. The change takes effect at the next sign-in.
    Double-click an item to open its folder.
 5. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
 6. **Log**: everything the program does, also written to the log file.
@@ -169,7 +170,7 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 
 | Item | Rule |
 |---|---|
-| Cleanup categories | any non-empty category, however small. The Recycle Bin (irreversible), DNS, JetBrains indexes, `Windows.old`, DISM, older driver versions and Docker are never preselected |
+| Cleanup categories | any non-empty category, however small. The Recycle Bin (irreversible), DNS, JetBrains indexes, `Windows.old`, DISM, older driver versions and both Docker categories are never preselected |
 | Leftovers, *high* confidence | Steam/Epic leftovers, dead uninstall entries, dead startup entries, Start menu shortcuts and tasks, folders unchanged for 180 days or more |
 | Leftovers, *medium* confidence | folders unchanged for 30–180 days, orphaned registry keys, dead desktop shortcuts |
 | Leftovers, *low* confidence | save games, large files: **never preselected** |

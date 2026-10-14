@@ -114,7 +114,8 @@ function NazwaPewnosci([string]$p) {
 }
 
 # Rozmiar do pokazania (kategorie bez mierzalnego rozmiaru maja '-')
-function RozmiarKategorii($k) { if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold', 'driverstore') { Rozmiar $k.Bajty } else { '-' } }
+function MierzalnaKategoria($k) { $k.Typ -in 'folder', 'kosz', 'miniatury', 'winold', 'driverstore' -or ($k.Typ -in 'docker', 'dockerall' -and $k.Bajty -gt 0) }
+function RozmiarKategorii($k) { if (MierzalnaKategoria $k) { Rozmiar $k.Bajty } else { '-' } }
 
 # Pozostalosci: foldery i pliki ida do Kosza; klucze i wartosci rejestru oraz zadania Harmonogramu
 # maja kopie (.reg / .xml) i punkt przywracania
@@ -380,6 +381,8 @@ function ZbudujKategorie {
                  Opis = (L 'Wersje sterowników zastąpione nowszymi, np. stare sterowniki karty graficznej (często 1-5 GB). Sterowniki używane i najnowsza wersja każdego zostają. Potem nie da się wrócić do starszej wersji w Menedżerze urządzeń.' 'Driver versions replaced by newer ones, e.g. old graphics drivers (often 1-5 GB). Drivers in use and the newest version of each are kept. Afterwards you cannot roll back to an older version in Device Manager.') }
     }
     if (Get-Command docker) {
+        $k += @{ Id = 'dockerall'; Nazwa = (L 'Docker - wszystko nieużywane (obrazy, kontenery, wolumeny)' 'Docker - everything unused (images, containers, volumes)'); Typ = 'dockerall'; TylkoRecznie = $true
+                 Opis = (L 'docker system prune -a --volumes: zatrzymane kontenery, obrazy bez kontenera, nieużywane wolumeny (TAKŻE BAZY DANYCH w nich), sieci i cache budowania. Działające kontenery i ich dane zostają. Docker musi być uruchomiony. Na Docker Desktop miejsce wraca na dysk po kompaktowaniu dysku WSL.' 'docker system prune -a --volumes: stopped containers, images without a container, unused volumes (INCLUDING DATABASES in them), networks and the build cache. Running containers and their data are kept. Docker must be running. On Docker Desktop the space returns to the drive after the WSL disk is compacted.') }
         $k += @{ Id = 'docker'; Nazwa = (L 'Docker - cache budowania' 'Docker build cache'); Typ = 'docker'; TylkoRecznie = $true
                  Opis = (L 'Tylko build cache. Obrazy, kontenery i wolumeny (w tym bazy danych) zostają.' 'Build cache only. Images, containers and volumes (including databases) are kept.') }
     }
@@ -465,6 +468,13 @@ function SkanujKategorie {
                 'winold' { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
                 'kosz' { $k.Bajty = (Zmierz @(FolderyKosza)).Bajty }
                 'miniatury' { $k.Bajty = [double](PlikiMiniatur | Measure-Object Length -Sum).Sum }
+                'docker' { $k.Bajty = [double](DockerDoOdzyskania).Cache; if (-not $script:DockerDziala) { $k.Uwaga = L 'Docker nie działa - uruchom go, żeby zmierzyć i wyczyścić.' 'Docker is not running - start it to measure and clean.' } }
+                'dockerall' {
+                    $d = DockerDoOdzyskania
+                    $k.Bajty = [double]$d.Razem
+                    if (-not $script:DockerDziala) { $k.Uwaga = L 'Docker nie działa - uruchom go, żeby zmierzyć i wyczyścić.' 'Docker is not running - start it to measure and clean.' }
+                    elseif ($d.Razem -gt 0) { $k.Uwaga = (L 'Do odzyskania: obrazy {0}, kontenery {1}, wolumeny {2}, cache budowania {3}. Zajęte razem: {4}.' 'Reclaimable: images {0}, containers {1}, volumes {2}, build cache {3}. Used in total: {4}.') -f (Rozmiar $d.Obrazy), (Rozmiar $d.Kontenery), (Rozmiar $d.Wolumeny), (Rozmiar $d.Cache), (Rozmiar $d.Zajete) }
+                }
                 'driverstore' {
                     $k.Pakiety = @(StareSterowniki | Sort-Object { $_.Bajty } -Descending)
                     $k.Bajty = [double]($k.Pakiety | ForEach-Object { $_.Bajty } | Measure-Object -Sum).Sum; $k.Pliki = $k.Pakiety.Count
@@ -479,6 +489,28 @@ function SkanujKategorie {
         catch { BladSkanu "kategoria $($k.Id)" $_ }
         if ($k.Procesy -and (Get-Process $k.Procesy)) { $k.Blokada = L 'uruchomiona przeglądarka - zamknij ją przed czyszczeniem' 'a browser is running - close it before cleaning' }
     }
+}
+
+# Docker: ile da sie odzyskac wedlug "docker system df" (kolumna RECLAIMABLE). Pusto, gdy Docker nie dziala.
+$script:DockerDziala = $false
+function DockerBajty([string]$s) {
+    $m = [regex]::Match("$s", '^\s*([\d\.]+)\s*([kKMGT]?)B')
+    if (-not $m.Success) { return 0.0 }
+    $mn = @{ '' = 1.0; 'k' = 1e3; 'M' = 1e6; 'G' = 1e9; 'T' = 1e12 }[$m.Groups[2].Value]   # klucze bez rozroznienia wielkosci liter
+    [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) * $mn
+}
+function DockerDoOdzyskania {
+    $w = @{ Obrazy = 0.0; Kontenery = 0.0; Wolumeny = 0.0; Cache = 0.0; Razem = 0.0; Zajete = 0.0 }
+    $linie = @(docker system df --format '{{json .}}' 2>$null)
+    $script:DockerDziala = $LASTEXITCODE -eq 0 -and $linie.Count
+    foreach ($l in $linie) { try {
+        $o = $l | ConvertFrom-Json -ErrorAction Stop
+        $b = DockerBajty $o.Reclaimable
+        $w.Zajete += DockerBajty $o.Size
+        switch -Wildcard ($o.Type) { 'Images' { $w.Obrazy = $b } 'Containers' { $w.Kontenery = $b } '*Volumes' { $w.Wolumeny = $b } 'Build Cache' { $w.Cache = $b } }
+    } catch { } }
+    $w.Razem = $w.Obrazy + $w.Kontenery + $w.Wolumeny + $w.Cache
+    $w
 }
 
 function KatalogPobranych { FolderUzytkownika '{374DE290-123F-4565-9164-39C4925E467B}' "$env:USERPROFILE\Downloads" }
@@ -834,6 +866,8 @@ function OchronaAutostartu($w) {
 
 function WpisAutostartu([hashtable]$w) {
     $w.Istnieje = [bool]($w.Plik -and (Test-Path -LiteralPath $w.Plik))
+    # Martwy tak samo jak w planie (MartweAutostarty): pusty cel skrotu MSI albo sciezka bez dysku to nie martwy wpis
+    if ($null -eq $w.Martwy) { $w.Martwy = [bool](BrakujacyPlik $w.Plik) }
     $w.Wydawca = if ($w.Istnieje) { (Get-Item -LiteralPath $w.Plik -Force).VersionInfo.CompanyName } else { '' }
     $w.Chroniony = OchronaAutostartu $w
     $w
@@ -859,7 +893,7 @@ function WpisyAutostartu {
         foreach ($n in $k.GetValueNames()) { try {
             if (-not $n) { continue }
             $pol = [string]$k.GetValue($n)
-            $wyn.Add((WpisAutostartu @{ Rodzaj = 'run'; Nazwa = $n; Polecenie = $pol; Plik = (SciezkaPliku $pol); Zrodlo = $r.Zrodlo
+            $wyn.Add((WpisAutostartu @{ Rodzaj = 'run'; Nazwa = $n; Polecenie = $pol; Plik = (SciezkaPliku $pol); Zrodlo = $r.Zrodlo; Klucz = $r.Klucz
                                         Zgoda = $r.Zgoda; ZgodaNazwa = $n; Wlaczony = (StanZgody $r.Zgoda $n) }))
         } catch { BladSkanu "autostart $($r.Klucz)\$n" $_ } }
     }
@@ -875,6 +909,7 @@ function WpisyAutostartu {
         if (-not @($t.Triggers | Where-Object { $_.CimClass.CimClassName -in 'MSFT_TaskLogonTrigger', 'MSFT_TaskBootTrigger' }).Count) { continue }
         $progs = ProgramyZadania $t
         $wyn.Add((WpisAutostartu @{ Rodzaj = 'zadanie'; Nazwa = $t.TaskName; Folder = $t.TaskPath; Plik = $(if ($progs.Count) { $progs[0] })
+            Martwy = [bool]($progs.Count -and -not @($progs | Where-Object { -not (BrakujacyPlik $_) }).Count)
             Polecenie = (@($t.Actions | Where-Object { $_.Execute } | ForEach-Object { "$($_.Execute) $($_.Arguments)".Trim() }) -join '; ')
             Zrodlo = (L 'Harmonogram zadań' 'Task Scheduler'); Wlaczony = ($t.State -ne 'Disabled') }))
     } catch { BladSkanu "zadanie $($t.TaskPath)$($t.TaskName)" $_ } }
@@ -895,6 +930,43 @@ function PrzelaczAutostart($w, [bool]$wlacz) {
     $w.Wlaczony = $wlacz
     $script:Rozmowa = $null
     Log ("Autostart {0}: {1} ({2}, {3})" -f $(if ($wlacz) { 'wlaczony' } else { 'wylaczony' }), $w.Nazwa, $w.Zrodlo, $w.Polecenie)
+}
+
+# Usuwa wpis autostartu na stale, z kopia: wartosc Run - .reg, skrot - do Kosza, zadanie - .xml.
+# Zwraca opis, gdzie jest kopia.
+function UsunAutostart($w) {
+    if ($w.Chroniony) { throw ((L '{0}: nie usuwam ({1})' '{0}: not removed ({1})') -f $w.Nazwa, $w.Chroniony) }
+    $kopie = Join-Path $LogDir ("kopie_rejestru\{0}" -f (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
+    $bezp = $w.Nazwa -replace '[^\w\-\. ]', '_'
+    switch ($w.Rodzaj) {
+        'run' {
+            New-Item -ItemType Directory -Force $kopie | Out-Null
+            $plik = Join-Path $kopie ("autostart_{0}.reg" -f $bezp)
+            KopiaWartosci $w.Klucz $w.Nazwa $plik
+            Remove-ItemProperty -LiteralPath "Registry::$($w.Klucz)" -Name $w.Nazwa -Force -ErrorAction Stop
+            $gdzie = $plik
+        }
+        'folder' {
+            Add-Type -AssemblyName Microsoft.VisualBasic
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($w.Polecenie, 'OnlyErrorDialogs', 'SendToRecycleBin')
+            $gdzie = L 'Kosz' 'Recycle Bin'
+        }
+        'zadanie' {
+            New-Item -ItemType Directory -Force $kopie | Out-Null
+            $plik = Join-Path $kopie ("autostart_{0}.xml" -f $bezp)
+            $xml = Export-ScheduledTask -TaskName $w.Nazwa -TaskPath $w.Folder
+            if (-not $xml) { throw (L 'nie udało się zrobić kopii - zadanie zostawione' 'backup failed - task kept') }
+            [IO.File]::WriteAllText($plik, $xml, [Text.Encoding]::Unicode)
+            Unregister-ScheduledTask -TaskName $w.Nazwa -TaskPath $w.Folder -Confirm:$false -ErrorAction Stop
+            $gdzie = $plik
+        }
+    }
+    # Stan wl./wyl. z Menedzera zadan nie jest juz potrzebny
+    if ($w.Zgoda) { Remove-ItemProperty -LiteralPath "Registry::$($w.Zgoda)" -Name $w.ZgodaNazwa -Force }
+    $script:Autostart = @($script:Autostart | Where-Object { $_ -ne $w })
+    $script:Rozmowa = $null
+    Log ("Autostart usuniety: {0} ({1}, {2}), kopia: {3}" -f $w.Nazwa, $w.Zrodlo, $w.Polecenie, $gdzie)
+    $gdzie
 }
 
 # Kopia jednej wartosci rejestru jako .reg - dwuklik przywraca tylko ja, a nie caly klucz Run.
@@ -1078,7 +1150,7 @@ function Podsumowanie {
     if ($wybrane.Count) {
         Dodaj (L 'Zostanie wyczyszczone:' 'To be cleaned:') 'White'
         foreach ($k in $wybrane) {
-            $roz = if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold', 'driverstore') { Rozmiar $k.Bajty } elseif ($k.Typ -eq 'dns') { '-' } else { L 'nieznane' 'unknown' }
+            $roz = if (MierzalnaKategoria $k) { Rozmiar $k.Bajty } elseif ($k.Typ -eq 'dns') { '-' } else { L 'nieznane' 'unknown' }
             Dodaj ("  - {0,-52} {1,10}" -f $k.Nazwa, $roz)
         }
         $suma = ($wybrane | ForEach-Object { [double]$_.Bajty } | Measure-Object -Sum).Sum
@@ -1740,7 +1812,17 @@ function WykonajCzyszczenie {
                 while (-not $p.WaitForExit(500)) { Pauza 0 }
                 $zysk = [math]::Max(0, (WolneC) - $przed)
             }
-            'docker' { docker builder prune -a -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' } }
+            'docker' {
+                $przed = (DockerDoOdzyskania).Cache
+                docker builder prune -a -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
+                $zysk = [math]::Max(0, $przed - (DockerDoOdzyskania).Cache)
+            }
+            'dockerall' {
+                Wypisz (L '  Docker usuwa nieużywane obrazy, kontenery, wolumeny i cache...' '  Docker is removing unused images, containers, volumes and cache...') 'Gray'
+                $przed = (DockerDoOdzyskania).Razem
+                docker system prune -a --volumes -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
+                $zysk = [math]::Max(0, $przed - (DockerDoOdzyskania).Razem)
+            }
             'driverstore' {
                 foreach ($d in $k.Pakiety) {
                     Pauza 0
