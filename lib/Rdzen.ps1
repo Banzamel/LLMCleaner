@@ -1652,6 +1652,19 @@ function ZainstalujAktualizacje {
 }
 
 # ---------- WYKONANIE ----------
+# Postep krok po kroku dla okna (ekran czyszczenia); w konsoli nic nie robi.
+# Stan: trwa, ok, czesc (zrobione z pominieciami), pominieto, blad.
+$script:NaKrok = $null
+function ZglosKrok([string]$id, [string]$stan, [double]$bajty = 0, [string]$uwaga = '') {
+    if ($script:NaKrok) { & $script:NaKrok $id $stan $bajty $uwaga }
+}
+
+# Punkt przywracania przed zmianami, ktorych nie cofnie Kosz: rejestr, zadania, sterowniki
+function PotrzebnyPunkt {
+    [bool](@($script:Pozostalosci | Where-Object { $_.Wybrana -and -not (NaKosz $_) }).Count -or
+           @($script:Kategorie | Where-Object { $_.Wybrana -and $_.Typ -eq 'driverstore' }).Count)
+}
+
 # Czysci zaznaczone kategorie i pozostalosci. Zwraca podsumowanie.
 function WykonajCzyszczenie {
     ZatrzymajOllama   # asystent nie jest juz potrzebny - zwalnia VRAM i RAM na czas czyszczenia
@@ -1660,21 +1673,26 @@ function WykonajCzyszczenie {
     $zegar = [Diagnostics.Stopwatch]::StartNew()
     $suma = 0.0
 
-    # Punkt przywracania przed zmianami, ktorych nie cofnie Kosz: rejestr, zadania, sterowniki
-    $wybranePoz = @($script:Pozostalosci | Where-Object { $_.Wybrana })
-    if (@($wybranePoz | Where-Object { -not (NaKosz $_) }).Count -or @($script:Kategorie | Where-Object { $_.Wybrana -and $_.Typ -eq 'driverstore' }).Count) {
+    # Najpierw to, co idzie do Kosza, potem rejestr i zadania (osobne kroki na ekranie postepu)
+    $wybranePoz = @(@($script:Pozostalosci | Where-Object { $_.Wybrana -and (NaKosz $_) }) +
+                    @($script:Pozostalosci | Where-Object { $_.Wybrana -and -not (NaKosz $_) }))
+    if (PotrzebnyPunkt) {
+        ZglosKrok 'punkt' 'trwa'
         Wypisz (L '  Tworzę punkt przywracania systemu (do 30 s)...' '  Creating a System Restore point (up to 30 s)...') 'Gray'
         $pp = PunktPrzywracania
         Wypisz ((L '  Punkt przywracania: {0}' '  Restore point: {0}') -f $pp.Opis) $(if ($pp.Ok) { 'Green' } else { 'Yellow' })
         Log "Punkt przywracania: $($pp.Opis)"
+        ZglosKrok 'punkt' $(if ($pp.Ok) { 'ok' } else { 'czesc' }) 0 $pp.Opis
     }
 
     foreach ($k in ($script:Kategorie | Where-Object { $_.Wybrana })) {
         $zysk = 0.0; $bledy = 0
         Postep ("   {0}..." -f $k.Nazwa)
+        ZglosKrok $k.Id 'trwa'
         if ($k.Procesy -and (Get-Process $k.Procesy)) {
             Wypisz ("  {0,-52} {1}" -f $k.Nazwa, (L 'pominięto (przeglądarka działa)' 'skipped (a browser is running)')) 'Yellow'
             Log "$($k.Id): pominieto - dziala przegladarka"
+            ZglosKrok $k.Id 'pominieto' 0 (L 'pominięto: działa przeglądarka' 'skipped: a browser is running')
             continue
         }
         $pominieteAplikacje = @()
@@ -1741,6 +1759,11 @@ function WykonajCzyszczenie {
         }
         Wypisz ("  {0,-52} {1,10}{2}" -f $k.Nazwa, (Rozmiar $zysk), $dop) $kolor
         Log ("{0}: {1} zwolnione, {2} pominietych" -f $k.Id, (Rozmiar $zysk), $bledy)
+        $uwagi = @()
+        if ($bledy) { $uwagi += (L '{0} w użyciu - pominięte' '{0} in use - skipped') -f $bledy }
+        if ($pominieteAplikacje) { $uwagi += (L 'pominięto: działa {0}' 'skipped: {0} is running') -f ($pominieteAplikacje -join ', ') }
+        $stan = if ($pominieteAplikacje -and -not $zysk) { 'pominieto' } elseif ($uwagi.Count) { 'czesc' } else { 'ok' }
+        ZglosKrok $k.Id $stan $zysk ($uwagi -join '; ')
     }
 
     Add-Type -AssemblyName Microsoft.VisualBasic
@@ -1750,18 +1773,30 @@ function WykonajCzyszczenie {
         Wypisz (L '  Pozostałości po odinstalowanych programach i grach:' '  Leftovers of uninstalled programs and games:') 'Cyan'
         $kopie = Join-Path $LogDir ("kopie_rejestru\{0}" -f (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
         $doKosza = L '-> Kosz' '-> Recycle Bin'
+        $krok = $null; $bajtyKroku = 0.0; $bledyKroku = 0
+        $zakonczKrok = {
+            ZglosKrok $krok $(if ($bledyKroku) { 'czesc' } else { 'ok' }) $bajtyKroku $(if ($bledyKroku) { (L 'nie udało się: {0} - szczegóły w Dzienniku' 'failed: {0} - see the Log') -f $bledyKroku } else { '' })
+        }
         foreach ($p in $wybranePoz) {
             Pauza 0
+            $id = if (NaKosz $p) { 'poz-kosz' } else { 'poz-kopia' }
+            if ($id -ne $krok) {
+                if ($krok) { & $zakonczKrok }
+                $krok = $id; $bajtyKroku = 0.0; $bledyKroku = 0
+                ZglosKrok $krok 'trwa'
+            }
             try {
                 if ($p.Typ -eq 'folder') {
                     [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p.Sciezka, 'OnlyErrorDialogs', 'SendToRecycleBin')
                     Wypisz ("  {0,-60} {1,10}  {2}" -f $p.Sciezka, (Rozmiar $p.Bajty), $doKosza) 'Green'
                     Log "Do Kosza (folder): $($p.Sciezka) ($(Rozmiar $p.Bajty))"
+                    $bajtyKroku += [double]$p.Bajty
                 }
                 elseif ($p.Typ -eq 'plik') {
                     [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p.Sciezka, 'OnlyErrorDialogs', 'SendToRecycleBin')
                     Wypisz ("  {0,-60} {1,10}  {2}" -f $p.Sciezka, (Rozmiar $p.Bajty), $doKosza) 'Green'
                     Log "Do Kosza (plik): $($p.Sciezka) ($(Rozmiar $p.Bajty))"
+                    $bajtyKroku += [double]$p.Bajty
                 }
                 elseif ($p.Typ -eq 'rejestr') {
                     New-Item -ItemType Directory -Force $kopie | Out-Null
@@ -1794,8 +1829,10 @@ function WykonajCzyszczenie {
             catch {
                 Wypisz ("  {0}: {1}" -f $p.Sciezka, $_.Exception.Message) 'Yellow'
                 Log "Blad pozostalosci $($p.Sciezka): $($_.Exception.Message)"
+                $bledyKroku++
             }
         }
+        if ($krok) { & $zakonczKrok }
         if (@($wybranePoz | Where-Object { $_.Typ -in 'rejestr', 'wartosc' }).Count) {
             Wypisz ((L '  Kopie rejestru: {0} (dwuklik na pliku .reg przywraca klucz)' '  Registry backups: {0} (double-click a .reg file to restore the key)') -f $kopie) 'DarkGray'
         }
