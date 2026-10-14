@@ -239,6 +239,8 @@ function UstawPrzyciski {
     $script:UI.BtnAnalizaAi.Enabled = $script:Zeskanowano -and $ai -and $script:UI.LvAnaliza.Tag
     $script:UI.BtnWyslij.Enabled = $ai
     $script:UI.BtnDoPlanu.Visible = $script:Zeskanowano
+    $script:UI.BtnAutoWylacz.Enabled = $script:UI.BtnAutoWlacz.Enabled = (-not $Podglad) -and [bool]$script:Autostart
+    $script:UI.BtnAutoAi.Enabled = $ai -and [bool]$script:Autostart
     $script:UI.BtnSkan.Text = $(if ($script:Zeskanowano) { L 'Skanuj ponownie' 'Scan again' } else { L 'Skanuj' 'Scan' })
 }
 
@@ -258,6 +260,8 @@ function PokazStrone([string]$id) {
     foreach ($k in $script:UI.Nav.Keys) { $script:UI.Nav[$k].Tag.Wybrany = ($k -eq $id); $script:UI.Nav[$k].Invalidate() }
     $script:UI.Strony[$id].BringToFront()
     if ($id -eq 'czat') { $script:UI.Pytanie.Focus() }
+    # Lista autostartu wczytuje sie przy pierwszym wejsciu na strone (kilka sekund, bez skanu dyskow)
+    if ($id -eq 'autostart' -and $null -eq $script:Autostart -and -not $script:UI.Skanuje) { $script:UI.BtnAutoOdswiez.PerformClick() }
 }
 
 # ---------- PRZEGLAD ----------
@@ -304,11 +308,11 @@ function WypelnijPlan {
         [void]$lv.Items.Add($it)
     }
     foreach ($p in $script:Pozostalosci) {
-        $pokaz = if ($p.Typ -eq 'rejestr' -and $p.Nazwa -ne (Split-Path $p.Sciezka -Leaf)) { "$($p.Nazwa)  [$($p.Sciezka)]" } else { $p.Sciezka }
+        $pokaz = PokazPozostalosc $p
         $opis = $p.Dlaczego
         if ($p.Ai) { $opis += "  |  $EtykietaAi`: $($p.Ai)" }
         $it = New-Object Windows.Forms.ListViewItem($pokaz)
-        [void]$it.SubItems.Add($(if ($p.Typ -ne 'rejestr') { Rozmiar $p.Bajty } else { L 'rejestr' 'registry' }))
+        [void]$it.SubItems.Add((RozmiarPozostalosci $p))
         [void]$it.SubItems.Add('')
         [void]$it.SubItems.Add((NazwaPewnosci $p.Pewnosc))
         [void]$it.SubItems.Add($opis)
@@ -350,6 +354,59 @@ function WypelnijAnalize($a) {
     $niewidoczne = ($a.Rozmiar - $a.Wolne) - $a.Zeskanowane - $a.Cienie
     if ($niewidoczne -gt 2GB) { $info += ' ' + ((L 'Niedostępne dla skanera: ok. {0}.' 'Not readable by the scanner: about {0}.') -f (Rozmiar $niewidoczne)) }
     $script:UI.InfoAnaliza.Text = $info
+}
+
+# ---------- AUTOSTART ----------
+function WypelnijAutostart {
+    $lv = $script:UI.LvAutostart
+    $lv.BeginUpdate()
+    $lv.Items.Clear()
+    foreach ($w in @($script:Autostart | Sort-Object { -not $_.Wlaczony }, { $_.Nazwa })) {
+        $opis = @($w.Polecenie,
+                  $(if (-not $w.Istnieje) { L 'plik programu nie istnieje - martwy wpis trafia do planu czyszczenia' 'the program file does not exist - a dead entry is listed in the cleanup plan' }),
+                  $(if ($w.Chroniony) { "$(L 'chronione' 'protected'): $($w.Chroniony)" }),
+                  $(if ($w.Ai) { "$EtykietaAi`: $($w.Ai)" })) | Where-Object { $_ }
+        $it = New-Object Windows.Forms.ListViewItem($w.Nazwa)
+        [void]$it.SubItems.Add($(if ($w.Wlaczony) { L 'włączony' 'on' } else { L 'wyłączony' 'off' }))
+        [void]$it.SubItems.Add("$($w.Wydawca)")
+        [void]$it.SubItems.Add($w.Zrodlo)
+        [void]$it.SubItems.Add(($opis -join '  |  '))
+        $it.ToolTipText = "$($w.Nazwa)`n$($opis -join "`n")"
+        $it.Tag = $w
+        $it.Group = $(if ($w.Wlaczony) { $script:UI.GrAutoWl } else { $script:UI.GrAutoWyl })
+        if ($w.Chroniony) { $it.ForeColor = $script:Styl.TekstSlaby } elseif (-not $w.Istnieje) { $it.ForeColor = $KoloryOkna.DarkYellow }
+        [void]$lv.Items.Add($it)
+    }
+    $lv.EndUpdate()
+    $wl = @($script:Autostart | Where-Object { $_.Wlaczony }).Count
+    $script:UI.InfoAutostart.Text = (L 'Uruchamia się przy logowaniu: {0} z {1}.' 'Starting at sign-in: {0} of {1}.') -f $wl, @($script:Autostart).Count
+}
+
+# Wylacza albo wlacza zaznaczone wiersze po potwierdzeniu
+function ZmienAutostart([bool]$wlacz) {
+    $wybrane = @($script:UI.LvAutostart.SelectedItems | ForEach-Object { $_.Tag })
+    if (-not $wybrane.Count) { Komunikat (L 'Zaznacz na liście programy do zmiany (Ctrl lub Shift zaznacza kilka).' 'Select programs in the list first (Ctrl or Shift selects several).'); return }
+    $chronione = @($wybrane | Where-Object { $_.Chroniony })
+    $doZmiany = @($wybrane | Where-Object { -not $_.Chroniony -and [bool]$_.Wlaczony -ne $wlacz })
+    if (-not $doZmiany.Count) {
+        $t = if ($chronione.Count) { (L 'Te pozycje są chronione i LLMCleaner ich nie zmienia: {0}' 'These items are protected and LLMCleaner does not change them: {0}') -f (($chronione | ForEach-Object { $_.Nazwa }) -join ', ') }
+             else { L 'Zaznaczone programy już są w tym stanie.' 'The selected programs are already in this state.' }
+        Komunikat $t; return
+    }
+    $pyt = $(if ($wlacz) { L 'Włączyć uruchamianie przy logowaniu:' 'Turn on starting at sign-in for:' } else { L 'Wyłączyć uruchamianie przy logowaniu:' 'Turn off starting at sign-in for:' })
+    $tekst = "$pyt`r`n`r`n" + (($doZmiany | ForEach-Object { "  - $($_.Nazwa)" }) -join "`r`n")
+    if (-not $wlacz) { $tekst += "`r`n`r`n" + (L 'Programy nie są usuwane. Uruchomisz je ręcznie, a „Włącz” przywróci autostart (ten sam przełącznik co w Menedżerze zadań).' 'Nothing is removed. You can start the programs by hand, and "Turn on" restores them (the same switch as in Task Manager).') }
+    if ($chronione.Count) { $tekst += "`r`n`r`n" + ((L 'Pominięte (chronione): {0}' 'Skipped (protected): {0}') -f (($chronione | ForEach-Object { $_.Nazwa }) -join ', ')) }
+    $odp = [Windows.Forms.MessageBox]::Show($script:UI.Okno, $tekst, 'LLMCleaner - Autostart', 'YesNo', 'Question', 'Button2')
+    if ($odp -ne 'Yes') { return }
+    $bledy = @()
+    foreach ($w in $doZmiany) {
+        try { PrzelaczAutostart $w $wlacz; OknoWypisz ("  Autostart: {0} -> {1}" -f $w.Nazwa, $(if ($wlacz) { L 'włączony' 'on' } else { L 'wyłączony' 'off' })) 'Green' }
+        catch { $bledy += "$($w.Nazwa): $($_.Exception.Message)"; Log "Autostart - blad $($w.Nazwa): $($_.Exception.Message)" }
+    }
+    WypelnijAutostart
+    if ($bledy.Count) { Komunikat ((L "Nie udało się zmienić:`r`n{0}" "Could not change:`r`n{0}") -f ($bledy -join "`r`n")) 'Warning' }
+    OknoStatus ((L 'Zmieniono: {0}. Zmiana działa od następnego logowania.' 'Changed: {0}. It takes effect at the next sign-in.') -f ($doZmiany.Count - $bledy.Count))
 }
 
 # ---------- CZAT ----------
@@ -452,7 +509,7 @@ function StronaPlan {
     [void]$lv.Columns.Add((L 'Pewność' 'Confidence'), 90)
     [void]$lv.Columns.Add((L 'Opis' 'Description'), 560)
     $script:UI.GrKategorie = New-Object Windows.Forms.ListViewGroup((L 'Kategorie czyszczenia (odtwarzają się same)' 'Cleanup categories (they rebuild themselves)'))
-    $script:UI.GrPozostalosci = New-Object Windows.Forms.ListViewGroup((L 'Pozostałości po odinstalowanych programach i grach (foldery i pliki idą do Kosza, rejestr - kopia .reg i punkt przywracania)' 'Leftovers of uninstalled programs and games (folders and files go to the Recycle Bin, registry - .reg backup and restore point)'))
+    $script:UI.GrPozostalosci = New-Object Windows.Forms.ListViewGroup((L 'Pozostałości po odinstalowanych programach i grach (foldery i pliki idą do Kosza, rejestr i zadania - kopia .reg / .xml i punkt przywracania)' 'Leftovers of uninstalled programs and games (folders and files go to the Recycle Bin, registry and tasks - .reg / .xml backup and restore point)'))
     [void]$lv.Groups.Add($script:UI.GrKategorie)
     [void]$lv.Groups.Add($script:UI.GrPozostalosci)
     $lv.Add_ItemCheck({
@@ -511,6 +568,42 @@ function StronaAnaliza {
     })
     $k.Controls.Add($lvA)
     $script:UI.LvAnaliza = $lvA
+
+    Dokuj $str @($n.Panel, $pas, (Odstep), $k)
+    $str
+}
+
+function StronaAutostart {
+    $s = $script:Styl
+    $str = Kontrolka Panel @{ Dock = 'Fill'; BackColor = $s.Tlo; Padding = (New-Object Windows.Forms.Padding(28, 20, 28, 16)) }
+    $n = Naglowek (L 'Autostart' 'Startup apps') (L 'Programy uruchamiane przy logowaniu. Wyłączenie działa jak w Menedżerze zadań: nic nie jest usuwane, a „Włącz” przywraca wpis. Ochrona, sterowniki, aktualizacje i części Windows są tylko do wglądu.' 'Programs that start when you sign in. Turning one off works like in Task Manager: nothing is removed, and "Turn on" restores it. Security software, drivers, updaters and parts of Windows are read-only.')
+    $script:UI.InfoAutostart = $n.Opis
+
+    $pas = Karta @{ Dock = 'Top'; Size = (New-Object Drawing.Size(900, 66)) }
+    $btnOd = Przycisk (L 'Odśwież' 'Refresh') 'drugi' @{ Location = (New-Object Drawing.Point(20, 12)); Size = (New-Object Drawing.Size(120, 42)) }
+    $btnWyl = Przycisk (L 'Wyłącz zaznaczone' 'Turn off selected') 'glowny' @{ Location = (New-Object Drawing.Point(150, 12)); Size = (New-Object Drawing.Size(180, 42)) }
+    $btnWl = Przycisk (L 'Włącz zaznaczone' 'Turn on selected') 'drugi' @{ Location = (New-Object Drawing.Point(340, 12)); Size = (New-Object Drawing.Size(170, 42)) }
+    $btnAi = Przycisk (L 'AI: co to jest?' 'AI: what is it?') 'drugi' @{ Location = (New-Object Drawing.Point(520, 12)); Size = (New-Object Drawing.Size(170, 42)) }
+    $pas.Controls.AddRange(@($btnOd, $btnWyl, $btnWl, $btnAi))
+    $script:UI.BtnAutoOdswiez = $btnOd; $script:UI.BtnAutoWylacz = $btnWyl; $script:UI.BtnAutoWlacz = $btnWl; $script:UI.BtnAutoAi = $btnAi
+
+    $k = Karta @{ Dock = 'Fill'; Padding = (New-Object Windows.Forms.Padding(10, 10, 4, 10)) }
+    $lv = Lista @{ HideSelection = $false; MultiSelect = $true }
+    [void]$lv.Columns.Add((L 'Program' 'Program'), 220)
+    [void]$lv.Columns.Add((L 'Stan' 'State'), 85)
+    [void]$lv.Columns.Add((L 'Wydawca' 'Publisher'), 170)
+    [void]$lv.Columns.Add((L 'Źródło' 'Source'), 170)
+    [void]$lv.Columns.Add((L 'Polecenie i opis' 'Command and description'), 620)
+    $script:UI.GrAutoWl = New-Object Windows.Forms.ListViewGroup((L 'Uruchamiane przy logowaniu' 'Starting at sign-in'))
+    $script:UI.GrAutoWyl = New-Object Windows.Forms.ListViewGroup((L 'Wyłączone' 'Turned off'))
+    [void]$lv.Groups.Add($script:UI.GrAutoWl)
+    [void]$lv.Groups.Add($script:UI.GrAutoWyl)
+    $lv.Add_DoubleClick({
+        $w = $script:UI.LvAutostart.SelectedItems[0].Tag
+        if ($w -and $w.Istnieje) { Start-Process explorer.exe -ArgumentList "/select,`"$($w.Plik)`"" }
+    })
+    $k.Controls.Add($lv)
+    $script:UI.LvAutostart = $lv
 
     Dokuj $str @($n.Panel, $pas, (Odstep), $k)
     $str
@@ -575,6 +668,7 @@ function PasekNawigacji {
         @{ Id = 'przeglad'; T = (L 'Przegląd' 'Overview'); I = [char]0xE80F }
         @{ Id = 'plan'; T = (L 'Plan czyszczenia' 'Cleanup plan'); I = [char]0xE74D }
         @{ Id = 'analiza'; T = (L 'Co zajmuje miejsce' 'What takes up space'); I = [char]0xEDA2 }
+        @{ Id = 'autostart'; T = (L 'Autostart' 'Startup apps'); I = [char]0xE7E8 }
         @{ Id = 'czat'; T = (L 'Asystent AI' 'AI assistant'); I = [char]0xE8BD }
         @{ Id = 'log'; T = (L 'Dziennik' 'Log'); I = [char]0xE81C })
     $lista = @()
@@ -624,7 +718,7 @@ function PokazOkno {
 
     # Strony (wszystkie Fill, widoczna jedna) i pasek stanu pod nimi
     $tresc = Kontrolka Panel @{ Dock = 'Fill'; BackColor = $s.Tlo }
-    $script:UI.Strony = [ordered]@{ przeglad = (StronaPrzeglad); plan = (StronaPlan); analiza = (StronaAnaliza); czat = (StronaCzat); log = (StronaDziennik) }
+    $script:UI.Strony = [ordered]@{ przeglad = (StronaPrzeglad); plan = (StronaPlan); analiza = (StronaAnaliza); autostart = (StronaAutostart); czat = (StronaCzat); log = (StronaDziennik) }
     $stan = Kontrolka Panel @{ Dock = 'Bottom'; Height = 30; BackColor = $s.Tlo; Padding = (New-Object Windows.Forms.Padding(30, 0, 30, 10)) }
     $st = Etykieta (L 'Gotowy. Wybierz dyski i kliknij „Skanuj”.' 'Ready. Pick the drives and click "Scan".') @{ Dock = 'Fill'; ForeColor = $s.TekstSlaby; Font = $s.Mala; AutoEllipsis = $true; TextAlign = 'MiddleLeft' }
     $pb = Kontrolka ProgressBar @{ Dock = 'Right'; Width = 160; Style = 'Marquee'; MarqueeAnimationSpeed = 30; Visible = $false }
@@ -633,7 +727,8 @@ function PokazOkno {
     Dokuj $f @((PasekNawigacji), $tresc)
     $script:UI.Status = $st; $script:UI.Pasek = $pb
     $u = $script:UI
-    $script:UI.Akcje = @($u.BtnSkan, $u.BtnWyczysc, $u.BtnWyjasnij, $u.BtnAnalizuj, $u.BtnAnalizaAi, $u.BtnWyslij, $u.BtnAkt)
+    $script:UI.Akcje = @($u.BtnSkan, $u.BtnWyczysc, $u.BtnWyjasnij, $u.BtnAnalizuj, $u.BtnAnalizaAi, $u.BtnWyslij, $u.BtnAkt,
+                         $u.BtnAutoOdswiez, $u.BtnAutoWylacz, $u.BtnAutoWlacz, $u.BtnAutoAi)
 
     # ---------- ZDARZENIA ----------
     $u.BtnSkan.Add_Click({ Akcja {
@@ -730,6 +825,21 @@ function PokazOkno {
         }
         $script:UI.Pytanie.Focus()
     })
+
+    $u.BtnAutoOdswiez.Add_Click({ Akcja {
+        OknoStatus (L 'Wczytuję programy uruchamiane przy logowaniu...' 'Reading the programs that start at sign-in...')
+        [void](WpisyAutostartu)
+        WypelnijAutostart
+        OknoStatus (L 'Autostart wczytany. Zaznacz programy i kliknij „Wyłącz zaznaczone”.' 'Startup apps loaded. Select programs and click "Turn off selected".')
+    } })
+    $u.BtnAutoWylacz.Add_Click({ Akcja { ZmienAutostart $false } })
+    $u.BtnAutoWlacz.Add_Click({ Akcja { ZmienAutostart $true } })
+    $u.BtnAutoAi.Add_Click({ Akcja {
+        OknoStatus (L 'Model opisuje programy (ok. 20-40 s)...' 'The model is describing the programs (about 20-40 s)...')
+        $n = AutostartAi $script:Autostart
+        WypelnijAutostart
+        OknoStatus $(if ($n -ge 0) { (L 'Opisano {0} pozycji.' '{0} items described.') -f $n } else { L 'Asystent niedostępny - szczegóły w Dzienniku.' 'The assistant is unavailable - see the Log.' })
+    } })
 
     $u.BtnAkt.Add_Click({ Akcja {
         if (ZainstalujAktualizacje) { $script:UI.Okno.Close() }
