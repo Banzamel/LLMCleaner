@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.4.0 (2026-10-14)
+
+- **Startup apps page** (window) and `s` (text mode): programs that start at sign-in from the Run registry keys,
+  the Startup folders and Task Scheduler tasks with a sign-in or boot trigger, with their publisher, source and
+  command. Turning a program off works like Task Manager (the `StartupApproved` switch) or disables the task, so
+  nothing is removed and *Turn on* restores it. Security software, drivers, hardware panels, updaters and parts of
+  Windows are read-only. **AI: what is it?** describes each program; its advice comes from a fixed list, and for
+  protected items the program sets it.
+- **Dead startup entries are leftovers now**: Run entries, shortcuts (Startup folders, Start menu, desktop) and
+  Task Scheduler tasks that point to a program that no longer exists. Shortcuts go to the Recycle Bin, Run entries
+  get a `.reg` backup of just that value, tasks an `.xml` backup (Task Scheduler > Import Task). Paths on a missing
+  drive, network paths and paths in the Windows folder are never treated as dead.
+- **Older driver versions (DriverStore)**, opt-in: driver packages replaced by a newer version of the same driver,
+  often old graphics drivers of 1-5 GB. The newest version and every driver in use are kept, and `pnputil` removes
+  the rest without `/force`. A System Restore point is created first.
+- New cleanup locations: `Windows\LiveKernelReports` (driver crash reports, often several GB) in *Error reports*,
+  Gradle, Cargo and Bun caches in *Developer tool caches*, and Epic Games Launcher and Battle.net in *App caches*.
+- The System Restore point is now created once at the start of cleaning whenever registry entries, tasks or
+  drivers are about to change.
+- After a scan, the AI chat also knows the startup apps once their page has been opened.
+
 ## 1.3.1 (2026-10-13)
 
 - **Fixed: the plan counted files that cleaning cannot delete.** Category sizes now leave out files the cleanup skips:

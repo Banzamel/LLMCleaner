@@ -21,25 +21,33 @@ against GitHub Releases (disable it with `-BezAktualizacji`).
   and descriptions. You change it, see a summary with the space to be freed, and confirm. The default answer is *no*.
 - **Whitelist-based cleanup** of things that rebuild themselves: temp files, Windows Update cache, crash dumps,
   browser caches (Chrome, Edge, Brave, Firefox: all profiles; passwords, bookmarks and sessions are kept),
-  npm/pip/yarn/uv/NuGet/Composer/Go caches, GPU shader caches, thumbnails, DNS cache, old NVIDIA/AMD driver installers,
-  app caches (Discord, Slack, Teams, VS Code, Spotify, Steam; each app is skipped while it is running), JetBrains IDE caches and indexes (opt-in),
-  and optionally DISM, the previous Windows version (`Windows.old`, removed through Windows Disk Cleanup) and the
-  Docker build cache.
+  npm/pip/yarn/uv/NuGet/Composer/Go/Gradle/Cargo/Bun caches, GPU shader caches, thumbnails, DNS cache, old NVIDIA/AMD
+  driver installers, driver crash reports (`LiveKernelReports`), app caches (Discord, Slack, Teams, VS Code, Spotify,
+  Steam, Epic Games Launcher, Battle.net; each app is skipped while it is running), JetBrains IDE caches and indexes
+  (opt-in), and optionally DISM, older driver versions in the DriverStore, the previous Windows version
+  (`Windows.old`, removed through Windows Disk Cleanup) and the Docker build cache.
 - **What takes up space (`a`).** A fast scan of any drive (about 45 s for 500,000 files) lists the most specific large
   folders and the largest files, with built-in hints (WinSxS, hiberfil, WSL disks, Steam games, `node_modules`…). The
   AI can describe each item and suggest what to do. Its advice comes from a fixed list of safe options, and for
   `Windows`, `ProgramData` and `Program Files` the advice is set by the program, not by the model. This view is
   read-only: nothing from it is deleted.
+- **Startup apps.** A list of programs that start when you sign in (Run registry keys, Startup folders, Task
+  Scheduler tasks with a sign-in or boot trigger) with publisher and command. Turning one off uses the same switch as
+  Task Manager, so nothing is removed and it can be turned back on. Security software, drivers, hardware panels,
+  updaters and parts of Windows are read-only. The AI can describe each program and suggest whether it needs to start
+  with Windows.
 - **Leftovers of uninstalled software:**
   - folders in `AppData`, `LocalLow`, `ProgramData` and `Program Files` that match no installed program,
   - Steam games removed without cleanup (folders without a manifest, shader caches, Workshop content) and Epic Games leftovers,
   - dead entries in *Apps & features* and orphaned registry keys, listed with their subkeys
     (e.g. `Klei` → *contains: Oxygen Not Included*),
+  - dead startup entries, shortcuts (Startup folders, Start menu, desktop) and Task Scheduler tasks that point to a
+    program that no longer exists,
   - large files in Downloads (100 MB and more) and in the user profile (1 GB and more).
 - **Safe by design:**
   - leftover folders and files go to the **Recycle Bin**,
-  - every registry key is **exported to a `.reg` backup** before deletion (double-click the file to restore),
-    and a **System Restore point** is created first,
+  - every registry key or value is **exported to a `.reg` backup** before deletion (double-click the file to
+    restore), every Task Scheduler task to an `.xml` backup, and a **System Restore point** is created first,
   - junctions and symlinks are removed as links and never followed,
   - files in use are skipped,
   - save games, large files and leftover folders that still contain `.exe` files (possibly portable programs)
@@ -109,8 +117,10 @@ The pages are in the navigation bar on the left.
    - **Clean selected...** shows a summary and asks for confirmation.
 3. **What takes up space**: pick a drive, click **Analyse**, then **AI: describe and advise**. Double-click an
    item to open it in File Explorer.
-4. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
-5. **Log**: everything the program does, also written to the log file.
+4. **Startup apps**: select programs and click **Turn off selected** (or **Turn on selected**), or
+   **AI: what is it?**. The change takes effect at the next sign-in. Double-click an item to open its folder.
+5. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
+6. **Log**: everything the program does, also written to the log file.
 
 ### Parameters
 
@@ -143,6 +153,7 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 | `w` | AI describes what each leftover was |
 | `p` | chat with the assistant; an empty line returns to the plan |
 | `a` | what takes up space on a drive; then `w` lets the AI describe the items |
+| `s` | startup apps; numbers turn programs on or off (after a *[y/N]* question), `w` lets the AI describe them |
 | `u` | install the new version (shown only when an update is available) |
 | `q` | quit without deleting anything |
 
@@ -150,9 +161,9 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 
 | Item | Rule |
 |---|---|
-| Cleanup categories | any non-empty category, however small. The Recycle Bin (irreversible), DNS, JetBrains indexes, `Windows.old`, DISM and Docker are never preselected |
-| Leftovers, *high* confidence | Steam/Epic leftovers, dead uninstall entries, folders unchanged for 180 days or more |
-| Leftovers, *medium* confidence | folders unchanged for 30–180 days, orphaned registry keys |
+| Cleanup categories | any non-empty category, however small. The Recycle Bin (irreversible), DNS, JetBrains indexes, `Windows.old`, DISM, older driver versions and Docker are never preselected |
+| Leftovers, *high* confidence | Steam/Epic leftovers, dead uninstall entries, dead startup entries, Start menu shortcuts and tasks, folders unchanged for 180 days or more |
+| Leftovers, *medium* confidence | folders unchanged for 30–180 days, orphaned registry keys, dead desktop shortcuts |
 | Leftovers, *low* confidence | save games, large files: **never preselected** |
 
 A folder is **not** treated as a leftover when its name or path matches an installed program, a Microsoft Store app,
@@ -168,7 +179,7 @@ was modified in the last 30 days or is on the built-in list of system and driver
 | `<install folder>\ai\ollama\` | the bundled Ollama engine |
 | `<install folder>\ai\models\` | AI models |
 | `%LOCALAPPDATA%\LLMCleaner\logs\` | one log per run: scan report, chosen plan, results, everything moved to the Recycle Bin |
-| `%LOCALAPPDATA%\LLMCleaner\logs\kopie_rejestru\` | `.reg` backups of deleted registry keys |
+| `%LOCALAPPDATA%\LLMCleaner\logs\kopie_rejestru\` | `.reg` backups of deleted registry keys and values, `.xml` backups of deleted Task Scheduler tasks |
 
 Logs and registry backups are kept after you uninstall the program.
 
@@ -201,6 +212,8 @@ about game studios, the model also invented titles. That is why:
 | Garbled Polish characters | the `.ps1` files must be saved as **UTF-8 with BOM** |
 | Taskbar did not come back | `Ctrl+Shift+Esc` → File → Run new task → `explorer.exe` |
 | A registry key was needed after all | double-click its `.reg` file in `logs\kopie_rejestru\`, or use the *LLMCleaner* System Restore point |
+| A deleted scheduled task was needed after all | Task Scheduler → *Import Task...* → its `.xml` file in `logs\kopie_rejestru\` |
+| A program no longer starts with Windows | *Startup apps* page → select it → *Turn on selected* (or Task Manager → *Startup apps*) |
 | Restore point *skipped by Windows* (*pominięty przez Windows*) | Windows creates at most one restore point per 24 hours by default; the `.reg` backups are still made |
 | App cache *skipped - running: …* (*pominięto - działa: …*) | close the app (also from the system tray) and run again |
 

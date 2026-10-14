@@ -114,7 +114,19 @@ function NazwaPewnosci([string]$p) {
 }
 
 # Rozmiar do pokazania (kategorie bez mierzalnego rozmiaru maja '-')
-function RozmiarKategorii($k) { if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold') { Rozmiar $k.Bajty } else { '-' } }
+function RozmiarKategorii($k) { if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold', 'driverstore') { Rozmiar $k.Bajty } else { '-' } }
+
+# Pozostalosci: foldery i pliki ida do Kosza; klucze i wartosci rejestru oraz zadania Harmonogramu
+# maja kopie (.reg / .xml) i punkt przywracania
+function NaKosz($p) { $p.Typ -in 'folder', 'plik' }
+function RozmiarPozostalosci($p) {
+    switch ($p.Typ) { 'rejestr' { L 'rejestr' 'registry' } 'wartosc' { L 'rejestr' 'registry' } 'zadanie' { L 'zadanie' 'task' } default { Rozmiar $p.Bajty } }
+}
+function PokazPozostalosc($p) {
+    if ($p.Typ -eq 'zadanie') { return "$(L 'Harmonogram zadań' 'Task Scheduler'): $($p.Sciezka)" }
+    if ($p.Typ -in 'rejestr', 'wartosc' -and $p.Nazwa -ne (Split-Path $p.Sciezka -Leaf)) { return "$($p.Nazwa)  [$($p.Sciezka)]" }
+    $p.Sciezka
+}
 
 # Punkt przywracania systemu przed zmianami w rejestrze (obok kopii .reg). Zwraca opis wyniku.
 function PunktPrzywracania {
@@ -298,6 +310,9 @@ function ZbudujKategorie {
         @{ Nazwa = 'Spotify'; Procesy = @('spotify'); Sciezki = @("$env:LOCALAPPDATA\Spotify\Data") }
         @{ Nazwa = 'Steam'; Procesy = @('steam', 'steamwebhelper')
            Sciezki = @($(if ($steam) { $s = $steam -replace '/', '\'; "$s\appcache\httpcache", "$s\appcache\librarycache" }) + "$env:LOCALAPPDATA\Steam\htmlcache") }
+        @{ Nazwa = 'Epic Games Launcher'; Procesy = @('epicgameslauncher')
+           Sciezki = @(Get-ChildItem "$env:LOCALAPPDATA\EpicGamesLauncher\Saved" -Directory -Force -Filter 'webcache*' | ForEach-Object { $_.FullName }) }
+        @{ Nazwa = 'Battle.net'; Procesy = @('battle.net'); Sciezki = @("$env:LOCALAPPDATA\Battle.net\BrowserCaches", "$env:LOCALAPPDATA\Battle.net\Cache") }
     )
     # Zostaja tylko aplikacje, ktore sa na tym komputerze
     foreach ($g in $grupy) { $g.Sciezki = @($g.Sciezki | Where-Object { $_ -and (Test-Path -LiteralPath $_) }) }
@@ -320,8 +335,8 @@ function ZbudujKategorie {
            Sciezki = @("$env:LOCALAPPDATA\Microsoft\Windows\WER",
                        "$env:ProgramData\Microsoft\Windows\WER\ReportQueue",
                        "$env:ProgramData\Microsoft\Windows\WER\ReportArchive",
-                       "$env:LOCALAPPDATA\CrashDumps", "$WinDir\Minidump", "$WinDir\MEMORY.DMP")
-           Opis = (L 'Raporty awarii programów i zrzuty pamięci po bluescreenach. Potrzebne tylko do diagnozy awarii.' 'Crash reports and blue screen memory dumps. Only needed to diagnose crashes.') }
+                       "$env:LOCALAPPDATA\CrashDumps", "$WinDir\Minidump", "$WinDir\MEMORY.DMP", "$WinDir\LiveKernelReports")
+           Opis = (L 'Raporty awarii programów, zrzuty pamięci po bluescreenach i raporty sterowników (LiveKernelReports, potrafią mieć kilka GB). Potrzebne tylko do diagnozy awarii.' 'Crash reports, blue screen memory dumps and driver reports (LiveKernelReports, can take several GB). Only needed to diagnose crashes.') }
         @{ Id = 'wu'; Nazwa = (L 'Cache Windows Update' 'Windows Update cache')
            Sciezki = @("$WinDir\SoftwareDistribution\Download", "$WinDir\SoftwareDistribution\DeliveryOptimization")
            Uslugi = @('wuauserv', 'bits')
@@ -336,8 +351,9 @@ function ZbudujKategorie {
         @{ Id = 'dev'; Nazwa = (L 'Cache narzędzi programistycznych' 'Developer tool caches')
            Sciezki = @("$env:LOCALAPPDATA\npm-cache", "$env:LOCALAPPDATA\pip\cache", "$env:LOCALAPPDATA\node-gyp\Cache",
                        "$env:LOCALAPPDATA\Yarn\Cache", "$env:LOCALAPPDATA\uv\cache", "$env:LOCALAPPDATA\NuGet\v3-cache",
-                       "$env:LOCALAPPDATA\Composer\cache", "$env:LOCALAPPDATA\go-build")
-           Opis = (L 'Pobrane paczki npm/pip/yarn/uv/NuGet/Composer i cache Go. Pobiorą się ponownie przy następnej instalacji.' 'Downloaded npm/pip/yarn/uv/NuGet/Composer packages and the Go build cache. They are downloaded again when needed.') }
+                       "$env:LOCALAPPDATA\Composer\cache", "$env:LOCALAPPDATA\go-build",
+                       "$env:USERPROFILE\.gradle\caches", "$env:USERPROFILE\.cargo\registry\cache", "$env:USERPROFILE\.bun\install\cache")
+           Opis = (L 'Pobrane paczki npm/pip/yarn/uv/NuGet/Composer/Gradle/Cargo/Bun i cache Go. Pobiorą się ponownie przy następnej instalacji lub budowaniu.' 'Downloaded npm/pip/yarn/uv/NuGet/Composer/Gradle/Cargo/Bun packages and the Go build cache. They are downloaded again on the next install or build.') }
         @{ Id = 'apki'; Nazwa = (L 'Cache aplikacji' 'App caches'); Grupy = $grupy
            Sciezki = @($grupy | ForEach-Object { $_.Sciezki })
            Opis = ((L 'Tylko cache, konta i ustawienia zostają. Uruchomione aplikacje są pomijane. Znalezione: {0}.' 'Cache only; accounts and settings are kept. Running apps are skipped. Found: {0}.') -f $znalezione) }
@@ -359,6 +375,10 @@ function ZbudujKategorie {
         @{ Id = 'dism'; Nazwa = (L 'Magazyn komponentów WinSxS (DISM)' 'WinSxS component store (DISM)'); Typ = 'dism'; TylkoRecznie = $true
            Opis = (L 'Usuwa zastąpione wersje komponentów Windows, zwykle 1-3 GB. Trwa kilka minut. Potem nie da się odinstalować wcześniejszych aktualizacji.' 'Removes superseded Windows components, usually 1-3 GB. Takes a few minutes. Older updates can no longer be uninstalled afterwards.') }
     )
+    if (Get-Command Get-WindowsDriver) {
+        $k += @{ Id = 'driverstore'; Nazwa = (L 'Starsze wersje sterowników (DriverStore)' 'Older driver versions (DriverStore)'); Typ = 'driverstore'; TylkoRecznie = $true
+                 Opis = (L 'Wersje sterowników zastąpione nowszymi, np. stare sterowniki karty graficznej (często 1-5 GB). Sterowniki używane i najnowsza wersja każdego zostają. Potem nie da się wrócić do starszej wersji w Menedżerze urządzeń.' 'Driver versions replaced by newer ones, e.g. old graphics drivers (often 1-5 GB). Drivers in use and the newest version of each are kept. Afterwards you cannot roll back to an older version in Device Manager.') }
+    }
     if (Get-Command docker) {
         $k += @{ Id = 'docker'; Nazwa = (L 'Docker - cache budowania' 'Docker build cache'); Typ = 'docker'; TylkoRecznie = $true
                  Opis = (L 'Tylko build cache. Obrazy, kontenery i wolumeny (w tym bazy danych) zostają.' 'Build cache only. Images, containers and volumes (including databases) are kept.') }
@@ -371,6 +391,33 @@ $sciezkaExplorer = "$env:LOCALAPPDATA\Microsoft\Windows\Explorer"
 function PlikiMiniatur {
     Get-ChildItem -LiteralPath $sciezkaExplorer -Force -File |
         Where-Object { $_.Name -like 'thumbcache_*.db' -or $_.Name -like 'iconcache_*.db' }
+}
+
+# Starsze wersje sterownikow w magazynie (DriverStore). Pakiety grupujemy po nazwie oryginalnego .inf,
+# dostawcy i klasie; w grupie zostaje najnowsza wersja i kazda uzywana przez urzadzenie. Pozostale usuwa
+# pnputil bez /force, wiec i tak odmowi pakietu w uzyciu. Tak samo dziala DriverStore Explorer.
+function WersjaSterownika($v) { $x = $null; if ([version]::TryParse("$v", [ref]$x)) { $x } else { [version]'0.0' } }
+function StareSterowniki {
+    $uzywane = @{}
+    foreach ($d in Get-CimInstance Win32_PnPSignedDriver) { if ($d.InfName) { $uzywane[$d.InfName.ToLower()] = 1 } }
+    $grupy = @{}
+    foreach ($d in Get-WindowsDriver -Online) {
+        if (-not $d.Driver -or -not $d.OriginalFileName) { continue }
+        $klucz = '{0}|{1}|{2}' -f (Split-Path $d.OriginalFileName -Leaf).ToLower(), $d.ProviderName, $d.ClassName
+        if (-not $grupy[$klucz]) { $grupy[$klucz] = [System.Collections.Generic.List[object]]::new() }
+        $grupy[$klucz].Add($d)
+    }
+    foreach ($g in $grupy.Values) {
+        if ($g.Count -lt 2) { continue }
+        $odNajnowszej = @($g | Sort-Object @{ Expression = { WersjaSterownika $_.Version }; Descending = $true }, @{ Expression = { $_.Date }; Descending = $true })
+        foreach ($d in @($odNajnowszej | Select-Object -Skip 1)) {
+            if ($uzywane[$d.Driver.ToLower()]) { continue }
+            $folder = Split-Path $d.OriginalFileName -Parent
+            # Zwykla suma: pliki magazynu naleza do systemu, test blokady uznalby je wszystkie za zablokowane
+            @{ Inf = $d.Driver; Nazwa = (Split-Path $d.OriginalFileName -Leaf); Dostawca = $d.ProviderName; Wersja = $d.Version
+               Folder = $folder; Bajty = [double](Pliki $folder | Measure-Object Length -Sum).Sum }
+        }
+    }
 }
 
 # ---------- DYSKI ----------
@@ -418,6 +465,15 @@ function SkanujKategorie {
                 'winold' { $m = Zmierz $k.Sciezki; $k.Bajty = $m.Bajty; $k.Pliki = $m.Pliki }
                 'kosz' { $k.Bajty = (Zmierz @(FolderyKosza)).Bajty }
                 'miniatury' { $k.Bajty = [double](PlikiMiniatur | Measure-Object Length -Sum).Sum }
+                'driverstore' {
+                    $k.Pakiety = @(StareSterowniki | Sort-Object { $_.Bajty } -Descending)
+                    $k.Bajty = [double]($k.Pakiety | ForEach-Object { $_.Bajty } | Measure-Object -Sum).Sum; $k.Pliki = $k.Pakiety.Count
+                    if ($k.Pakiety.Count) {
+                        $k.Uwaga = (L 'Do usunięcia {0} pakietów, największe: {1}.' '{0} packages to remove, the largest: {1}.') -f $k.Pakiety.Count,
+                            (($k.Pakiety | Select-Object -First 3 | ForEach-Object { '{0} {1} ({2}, {3})' -f $_.Nazwa, $_.Wersja, $_.Dostawca, (Rozmiar $_.Bajty) }) -join ', ')
+                        Log "driverstore: $(($k.Pakiety | ForEach-Object { "$($_.Inf)=$($_.Nazwa) $($_.Wersja)" }) -join ', ')"
+                    }
+                }
             }
         }
         catch { BladSkanu "kategoria $($k.Id)" $_ }
@@ -681,6 +737,185 @@ function EpicOsierocone {
     }
 }
 
+# ---------- MARTWE WPISY STARTOWE, SKROTY I ZADANIA ----------
+# Wskazuja na program, ktorego juz nie ma. Liczy sie tylko pewny brak: sciezka bezwzgledna na dysku,
+# ktory istnieje (odlaczony dysk USB to nie martwy wpis), poza folderem Windows (przekierowanie
+# System32/SysWOW64 dawaloby falszywe braki) i poza udzialami sieciowymi.
+function BrakujacyPlik([string]$p) {
+    if (-not $p -or $p.StartsWith('\\') -or -not [IO.Path]::IsPathRooted($p)) { return $false }
+    if ($p -like "$WinDir\*") { return $false }
+    try { if (-not (Test-Path -LiteralPath ([IO.Path]::GetPathRoot($p)))) { return $false } } catch { return $false }
+    if (Test-Path -LiteralPath $p) { return $false }
+    # Skroty 32-bitowych programow potrafia zwracac Program Files zamiast Program Files (x86) i odwrotnie
+    if ($p -match '\\Program Files\\' -and (Test-Path -LiteralPath ($p -replace '\\Program Files\\', '\Program Files (x86)\'))) { return $false }
+    if ($p -match '\\Program Files \(x86\)\\' -and (Test-Path -LiteralPath ($p -replace '\\Program Files \(x86\)\\', '\Program Files\'))) { return $false }
+    $true
+}
+
+# Klucze Run z ich odpowiednikami StartupApproved (tam Windows i Menedzer zadan zapisuja wylaczenie)
+$AutostartKlucz = 'Software\Microsoft\Windows\CurrentVersion'
+function KluczeRun {
+    @{ Klucz = "$HKCUNazwa\$AutostartKlucz\Run"; Zgoda = "$HKCUNazwa\$AutostartKlucz\Explorer\StartupApproved\Run"; Zrodlo = (L 'Rejestr (użytkownik)' 'Registry (user)') }
+    @{ Klucz = "HKEY_LOCAL_MACHINE\$AutostartKlucz\Run"; Zgoda = "HKEY_LOCAL_MACHINE\$AutostartKlucz\Explorer\StartupApproved\Run"; Zrodlo = (L 'Rejestr (wszyscy)' 'Registry (all users)') }
+    @{ Klucz = "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"; Zgoda = "HKEY_LOCAL_MACHINE\$AutostartKlucz\Explorer\StartupApproved\Run32"; Zrodlo = (L 'Rejestr (wszyscy, 32-bit)' 'Registry (all users, 32-bit)') }
+}
+function FolderyAutostartu {
+    @{ Folder = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"; Zgoda = "$HKCUNazwa\$AutostartKlucz\Explorer\StartupApproved\StartupFolder"; Zrodlo = (L 'Folder Autostart (użytkownik)' 'Startup folder (user)') }
+    @{ Folder = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"; Zgoda = "HKEY_LOCAL_MACHINE\$AutostartKlucz\Explorer\StartupApproved\StartupFolder"; Zrodlo = (L 'Folder Autostart (wszyscy)' 'Startup folder (all users)') }
+}
+
+# Zadania Harmonogramu poza \Microsoft\ (tamte sa czescia Windows)
+function ZadaniaInnychFirm { Get-ScheduledTask | Where-Object { $_.TaskPath -notlike '\Microsoft\*' } }
+function ProgramyZadania($t) { @($t.Actions | Where-Object { $_.Execute } | ForEach-Object { SciezkaPliku $_.Execute }) }
+
+function MartweAutostarty {
+    foreach ($r in KluczeRun) {
+        $k = Get-Item -LiteralPath "Registry::$($r.Klucz)"
+        if (-not $k) { continue }
+        foreach ($n in $k.GetValueNames()) { try {
+            if (-not $n) { continue }
+            $cel = SciezkaPliku ([string]$k.GetValue($n))
+            if (-not (BrakujacyPlik $cel)) { continue }
+            @{ Typ = 'wartosc'; Sciezka = $r.Klucz; Wartosc = $n; Nazwa = $n; Bajty = 0.0; Pewnosc = 'wysoka'
+               Dlaczego = ((L 'Martwy wpis autostartu: program {0} nie istnieje.' 'Dead startup entry: the program {0} no longer exists.') -f $cel) }
+        } catch { BladSkanu "autostart $($r.Klucz)\$n" $_ } }
+    }
+
+    # Skroty: w Autostarcie i menu Start pewne, na pulpicie srednie (moze je ktos sam zrobil)
+    $sh = New-Object -ComObject WScript.Shell
+    $miejsca = @(FolderyAutostartu | ForEach-Object { @{ D = $_.Folder; P = 'wysoka'; Rek = $false } }) + @(
+        @{ D = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"; P = 'wysoka'; Rek = $true }
+        @{ D = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs"; P = 'wysoka'; Rek = $true }
+        @{ D = (FolderUzytkownika 'Desktop' "$env:USERPROFILE\Desktop"); P = 'srednia'; Rek = $false }
+        @{ D = "$env:PUBLIC\Desktop"; P = 'srednia'; Rek = $false })
+    $widziane = @{}
+    foreach ($m in $miejsca) {
+        foreach ($l in Get-ChildItem -LiteralPath $m.D -Filter *.lnk -Force -File -Recurse:$m.Rek) { try {
+            if ($widziane[$l.FullName]) { continue }
+            $widziane[$l.FullName] = 1
+            $cel = $sh.CreateShortcut($l.FullName).TargetPath   # pusty u skrotow MSI i aplikacji ze Sklepu
+            if (-not (BrakujacyPlik $cel)) { continue }
+            @{ Typ = 'plik'; Sciezka = $l.FullName; Nazwa = $l.BaseName; Bajty = [double]$l.Length; Ostatnio = $l.LastWriteTime; Pewnosc = $m.P
+               Dlaczego = ((L 'Skrót do programu, którego już nie ma ({0}).' 'Shortcut to a program that no longer exists ({0}).') -f $cel) }
+        } catch { BladSkanu "skrot $($l.FullName)" $_ } }
+    }
+
+    # Zadania: martwe, gdy zaden z ich programow nie istnieje
+    foreach ($t in ZadaniaInnychFirm) { try {
+        $progs = ProgramyZadania $t
+        if (-not $progs.Count -or @($progs | Where-Object { -not (BrakujacyPlik $_) }).Count) { continue }
+        @{ Typ = 'zadanie'; Sciezka = "$($t.TaskPath)$($t.TaskName)"; Nazwa = $t.TaskName; Folder = $t.TaskPath; Bajty = 0.0; Pewnosc = 'wysoka'
+           Dlaczego = ((L 'Zadanie Harmonogramu uruchamia program, którego już nie ma ({0}).' 'Scheduled task runs a program that no longer exists ({0}).') -f ($progs -join ', ')) }
+    } catch { BladSkanu "zadanie $($t.TaskPath)$($t.TaskName)" $_ } }
+}
+
+# ---------- MENEDZER AUTOSTARTU ----------
+# Programy uruchamiane przy logowaniu. Niczego tu nie usuwamy: wpisy Run i folderu Autostart wylaczamy
+# tak jak Menedzer zadan (wartosc w StartupApproved, nieparzysty pierwszy bajt = wylaczony), zadania
+# Harmonogramu - Disable-ScheduledTask. Wlaczenie przywraca dokladnie poprzedni stan.
+
+# Ochrona, sterowniki i panele sprzetu: wylaczenie potrafi zepsuc touchpad, dzwiek albo ochrone
+$ChronioneAutostart = @('securityhealth*', '*defender*', 'msmpeng*', '*antivirus*', 'avast*', 'avg*', 'egui*', 'eset*',
+    'avp*', 'kaspersky*', 'bdagent*', 'bitdefender*', 'norton*', 'mcafee*', 'mbam*', 'malwarebytes*', 'sophos*',
+    'rthdvcpl*', 'rtkaud*', 'rtkngui*', 'realtek*', 'igfx*', 'synaptics*', 'syntp*', 'etdctrl*', 'elan*', 'waves*',
+    'maxxaudio*', 'dolby*')
+$script:Autostart = $null
+
+function OchronaAutostartu($w) {
+    if ($w.Plik -like "$WinDir\*") { return L 'część Windows' 'part of Windows' }
+    foreach ($x in @($w.Nazwa, $(if ($w.Plik) { [IO.Path]::GetFileNameWithoutExtension($w.Plik) })) | Where-Object { $_ }) {
+        foreach ($wz in $ChronioneAutostart) {
+            if ($x -like $wz) { return L 'ochrona, sterownik albo panel sprzętu - wyłączenie może coś zepsuć' 'security software, a driver or a hardware panel - turning it off may break something' }
+        }
+    }
+    if ($w.Nazwa -match 'update') { return L 'aktualizacje programu - bez nich nie dostanie poprawek bezpieczeństwa' 'program updates - without them it gets no security fixes' }
+    $null
+}
+
+function WpisAutostartu([hashtable]$w) {
+    $w.Istnieje = [bool]($w.Plik -and (Test-Path -LiteralPath $w.Plik))
+    $w.Wydawca = if ($w.Istnieje) { (Get-Item -LiteralPath $w.Plik -Force).VersionInfo.CompanyName } else { '' }
+    $w.Chroniony = OchronaAutostartu $w
+    $w
+}
+
+# Wylaczony przez uzytkownika (Menedzer zadan, Ustawienia > Aplikacje > Uruchamianie albo LLMCleaner)
+function StanZgody([string]$klucz, [string]$nazwa) {
+    $b = (Get-ItemProperty -LiteralPath "Registry::$klucz" -Name $nazwa).$nazwa
+    -not ($b -is [byte[]] -and $b.Length -and ($b[0] -band 1))
+}
+function UstawZgode([string]$klucz, [string]$nazwa, [bool]$wlacz) {
+    if (-not (Test-Path -LiteralPath "Registry::$klucz")) { New-Item -Path "Registry::$klucz" -Force -ErrorAction Stop | Out-Null }
+    $b = [byte[]]::new(12)
+    if ($wlacz) { $b[0] = 2 } else { $b[0] = 3; [BitConverter]::GetBytes([DateTime]::Now.ToFileTime()).CopyTo($b, 4) }
+    Set-ItemProperty -LiteralPath "Registry::$klucz" -Name $nazwa -Value $b -Type Binary -ErrorAction Stop
+}
+
+function WpisyAutostartu {
+    $wyn = [System.Collections.Generic.List[object]]::new()
+    foreach ($r in KluczeRun) {
+        $k = Get-Item -LiteralPath "Registry::$($r.Klucz)"
+        if (-not $k) { continue }
+        foreach ($n in $k.GetValueNames()) { try {
+            if (-not $n) { continue }
+            $pol = [string]$k.GetValue($n)
+            $wyn.Add((WpisAutostartu @{ Rodzaj = 'run'; Nazwa = $n; Polecenie = $pol; Plik = (SciezkaPliku $pol); Zrodlo = $r.Zrodlo
+                                        Zgoda = $r.Zgoda; ZgodaNazwa = $n; Wlaczony = (StanZgody $r.Zgoda $n) }))
+        } catch { BladSkanu "autostart $($r.Klucz)\$n" $_ } }
+    }
+    $sh = New-Object -ComObject WScript.Shell
+    foreach ($f in FolderyAutostartu) {
+        foreach ($l in Get-ChildItem -LiteralPath $f.Folder -File -Force | Where-Object { $_.Name -ne 'desktop.ini' }) { try {
+            $cel = if ($l.Extension -eq '.lnk') { $sh.CreateShortcut($l.FullName).TargetPath } else { $l.FullName }
+            $wyn.Add((WpisAutostartu @{ Rodzaj = 'folder'; Nazwa = $l.BaseName; Polecenie = $l.FullName; Plik = $cel; Zrodlo = $f.Zrodlo
+                                        Zgoda = $f.Zgoda; ZgodaNazwa = $l.Name; Wlaczony = (StanZgody $f.Zgoda $l.Name) }))
+        } catch { BladSkanu "autostart $($l.FullName)" $_ } }
+    }
+    foreach ($t in ZadaniaInnychFirm) { try {
+        if (-not @($t.Triggers | Where-Object { $_.CimClass.CimClassName -in 'MSFT_TaskLogonTrigger', 'MSFT_TaskBootTrigger' }).Count) { continue }
+        $progs = ProgramyZadania $t
+        $wyn.Add((WpisAutostartu @{ Rodzaj = 'zadanie'; Nazwa = $t.TaskName; Folder = $t.TaskPath; Plik = $(if ($progs.Count) { $progs[0] })
+            Polecenie = (@($t.Actions | Where-Object { $_.Execute } | ForEach-Object { "$($_.Execute) $($_.Arguments)".Trim() }) -join '; ')
+            Zrodlo = (L 'Harmonogram zadań' 'Task Scheduler'); Wlaczony = ($t.State -ne 'Disabled') }))
+    } catch { BladSkanu "zadanie $($t.TaskPath)$($t.TaskName)" $_ } }
+    $n = 0; foreach ($w in $wyn) { $n++; $w.Id = "S$n" }
+    Log ("Autostart: {0} wpisow, wlaczonych {1}" -f $wyn.Count, @($wyn | Where-Object { $_.Wlaczony }).Count)
+    $script:Autostart = $wyn.ToArray()
+    $script:Rozmowa = $null   # nowe dane dla czatu
+    $script:Autostart
+}
+
+function PrzelaczAutostart($w, [bool]$wlacz) {
+    if ($w.Chroniony) { throw ((L '{0}: nie zmieniam ({1})' '{0}: not changed ({1})') -f $w.Nazwa, $w.Chroniony) }
+    if ($w.Rodzaj -eq 'zadanie') {
+        if ($wlacz) { Enable-ScheduledTask -TaskName $w.Nazwa -TaskPath $w.Folder -ErrorAction Stop | Out-Null }
+        else { Disable-ScheduledTask -TaskName $w.Nazwa -TaskPath $w.Folder -ErrorAction Stop | Out-Null }
+    }
+    else { UstawZgode $w.Zgoda $w.ZgodaNazwa $wlacz }
+    $w.Wlaczony = $wlacz
+    $script:Rozmowa = $null
+    Log ("Autostart {0}: {1} ({2}, {3})" -f $(if ($wlacz) { 'wlaczony' } else { 'wylaczony' }), $w.Nazwa, $w.Zrodlo, $w.Polecenie)
+}
+
+# Kopia jednej wartosci rejestru jako .reg - dwuklik przywraca tylko ja, a nie caly klucz Run.
+# Nietypowe rodzaje (binarne, liczby) eksportuje reg.exe razem z kluczem.
+function KopiaWartosci([string]$klucz, [string]$nazwa, [string]$plik) {
+    $k = Get-Item -LiteralPath "Registry::$klucz" -ErrorAction Stop
+    $rodzaj = $k.GetValueKind($nazwa)
+    $tekst = [string]$k.GetValue($nazwa, $null, 'DoNotExpandEnvironmentNames')
+    $n = $nazwa.Replace('\', '\\').Replace('"', '\"')
+    $wpis = switch ($rodzaj) {
+        'String' { '"{0}"="{1}"' -f $n, $tekst.Replace('\', '\\').Replace('"', '\"') }
+        'ExpandString' { '"{0}"=hex(2):{1}' -f $n, (([Text.Encoding]::Unicode.GetBytes($tekst) + 0, 0 | ForEach-Object { '{0:x2}' -f $_ }) -join ',') }
+        default { $null }
+    }
+    if ($wpis) {
+        [IO.File]::WriteAllText($plik, "Windows Registry Editor Version 5.00`r`n`r`n[$klucz]`r`n$wpis`r`n", [Text.Encoding]::Unicode)
+    }
+    else { & reg.exe export $klucz $plik /y 2>&1 | Out-Null }
+    if (-not (Test-Path -LiteralPath $plik)) { throw (L 'nie udało się zrobić kopii - wpis zostawiony' 'backup failed - entry kept') }
+}
+
 function SkanujPozostalosci {
     $wpisy = @(KluczeOdinstalowania)
     $martwe = @(MartweWpisy $wpisy)
@@ -751,7 +986,10 @@ function SkanujPozostalosci {
         } catch { BladSkanu "klucz $r\$($k.PSChildName)" $_ } }
     }
 
-    @($wyniki | Sort-Object { $_.Bajty } -Descending) + @($martwe) + @($rej)
+    $start = @()
+    try { $start = @(MartweAutostarty) } catch { BladSkanu 'autostart' $_ }
+
+    @($wyniki | Sort-Object { $_.Bajty } -Descending) + @($martwe) + @($start) + @($rej)
 }
 
 # Caly skan: kategorie, profil, pozostalosci i plan. Wynik w $script:Kategorie/Pozostalosci/Dysk.
@@ -775,9 +1013,9 @@ function SkanujWszystko {
     }
     $n = 0; foreach ($p in $poz) { $n++; $p.Id = "R$n" }
     $script:Pozostalosci = $poz
-    KoniecPostepu ((L '   Znaleziono pozostałości: {0} folderów, {1} plików, {2} wpisów rejestru.' '   Leftovers found: {0} folders, {1} files, {2} registry entries.') -f
+    KoniecPostepu ((L '   Znaleziono pozostałości: {0} folderów, {1} plików, {2} wpisów rejestru, {3} zadań.' '   Leftovers found: {0} folders, {1} files, {2} registry entries, {3} tasks.') -f
         @($poz | Where-Object { $_.Typ -eq 'folder' }).Count, @($poz | Where-Object { $_.Typ -eq 'plik' }).Count,
-        @($poz | Where-Object { $_.Typ -eq 'rejestr' }).Count)
+        @($poz | Where-Object { $_.Typ -in 'rejestr', 'wartosc' }).Count, @($poz | Where-Object { $_.Typ -eq 'zadanie' }).Count)
     if ($script:BledySkanu) {
         Wypisz ((L '   Pominięto elementy, których nie dało się odczytać: {0} (szczegóły w logu: {1})' '   Skipped items that could not be read: {0} (details in the log: {1})') -f $script:BledySkanu, $LogPlik) 'Yellow'
     }
@@ -813,7 +1051,7 @@ function RaportJson {
                rozmiar = (RozmiarKategorii $_); tylko_recznie = [bool]$_.TylkoRecznie; blokada = $_.Blokada } })
         pozostalosci = @($script:Pozostalosci | ForEach-Object {
             @{ id = $_.Id; typ = $_.Typ; sciezka = $_.Sciezka; zaznaczona = [bool]$_.Wybrana
-               rozmiar = $(if ($_.Typ -ne 'rejestr') { Rozmiar $_.Bajty } else { '-' })
+               rozmiar = $(if (NaKosz $_) { Rozmiar $_.Bajty } else { '-' })
                ostatnia_zmiana = $(if ($_.Ostatnio) { $_.Ostatnio.ToString('yyyy-MM-dd') }); pewnosc = $_.Pewnosc
                dlaczego = $_.Dlaczego; czym_jest = $_.Ai } })
         najwieksze_foldery_profilu = $script:Dysk.Profil
@@ -823,6 +1061,9 @@ function RaportJson {
         analiza_dyskow = @($script:Analizy.Values | ForEach-Object {
             @{ dysk = "$($_.Litera):"; pozycje = @(@($_.Foldery) + @($_.Pliki) | ForEach-Object {
                 @{ sciezka = $_.Sciezka; rozmiar = (Rozmiar $_.Bajty); podpowiedz = $_.Podpowiedz; czym_jest = $_.Ai } }) } })
+        autostart = @($script:Autostart | Where-Object { $_ } | ForEach-Object {
+            @{ nazwa = $_.Nazwa; wlaczony = [bool]$_.Wlaczony; wydawca = $_.Wydawca; zrodlo = $_.Zrodlo; polecenie = $_.Polecenie
+               chroniony = $_.Chroniony; czym_jest = $_.Ai } })
     }
     ConvertTo-Json -InputObject $raport -Depth 10 -Compress
 }
@@ -837,7 +1078,7 @@ function Podsumowanie {
     if ($wybrane.Count) {
         Dodaj (L 'Zostanie wyczyszczone:' 'To be cleaned:') 'White'
         foreach ($k in $wybrane) {
-            $roz = if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold') { Rozmiar $k.Bajty } elseif ($k.Typ -eq 'dns') { '-' } else { L 'nieznane' 'unknown' }
+            $roz = if ($k.Typ -in 'folder', 'kosz', 'miniatury', 'winold', 'driverstore') { Rozmiar $k.Bajty } elseif ($k.Typ -eq 'dns') { '-' } else { L 'nieznane' 'unknown' }
             Dodaj ("  - {0,-52} {1,10}" -f $k.Nazwa, $roz)
         }
         $suma = ($wybrane | ForEach-Object { [double]$_.Bajty } | Measure-Object -Sum).Sum
@@ -849,14 +1090,14 @@ function Podsumowanie {
         if ($zablokowane) { Dodaj ((L 'Zablokowane         : {0} (pliki w użyciu - nie zostaną usunięte, nie są wliczone)' 'Locked              : {0} (files in use - not deleted, not included)') -f (Rozmiar $zablokowane)) 'Yellow' }
         Dodaj (L '(część plików może być w użyciu - wtedy zostaną pominięte i zysk będzie mniejszy)' '(some files may be in use - they are skipped and the gain will be smaller)') 'DarkGray'
     }
-    $doKosza = @($wybranePoz | Where-Object { $_.Typ -ne 'rejestr' })
-    $pozRejestr = @($wybranePoz | Where-Object { $_.Typ -eq 'rejestr' })
+    $doKosza = @($wybranePoz | Where-Object { NaKosz $_ })
+    $pozRejestr = @($wybranePoz | Where-Object { $_.Typ -in 'rejestr', 'wartosc' })
+    $pozZadania = @($wybranePoz | Where-Object { $_.Typ -eq 'zadanie' })
     if ($wybranePoz.Count) {
         Dodaj ''
         Dodaj (L 'Pozostałości po odinstalowanych programach i grach:' 'Leftovers of uninstalled programs and games:') 'White'
         foreach ($p in $wybranePoz) {
-            $roz = if ($p.Typ -ne 'rejestr') { Rozmiar $p.Bajty } else { L 'rejestr' 'registry' }
-            Dodaj ("  - {0,-52} {1,10}" -f $p.Sciezka, $roz)
+            Dodaj ("  - {0,-52} {1,10}" -f (PokazPozostalosc $p), (RozmiarPozostalosci $p))
         }
         if ($doKosza.Count) {
             $sp = ($doKosza | ForEach-Object { [double]$_.Bajty } | Measure-Object -Sum).Sum
@@ -865,11 +1106,15 @@ function Podsumowanie {
         if ($pozRejestr.Count) {
             Dodaj ((L 'Klucze rejestru     : {0} - kopia .reg w logs\kopie_rejestru + punkt przywracania systemu' 'Registry keys       : {0} - .reg backup in logs\kopie_rejestru + System Restore point') -f $pozRejestr.Count)
         }
+        if ($pozZadania.Count) {
+            Dodaj ((L 'Zadania Harmonogramu: {0} - kopia .xml w logs\kopie_rejestru' 'Scheduled tasks     : {0} - .xml backup in logs\kopie_rejestru') -f $pozZadania.Count)
+        }
     }
     $uwagi = @()
     if ($wybrane | Where-Object { $_.Id -eq 'kosz' }) { $uwagi += L 'Kosz zostanie opróżniony NIEODWRACALNIE (przed przeniesieniem pozostałości).' 'The Recycle Bin is emptied PERMANENTLY (before leftovers are moved to it).' }
     if ($wybrane | Where-Object { $_.Typ -eq 'miniatury' }) { $uwagi += L 'Eksplorator zostanie zrestartowany - pasek zadań zniknie na kilka sekund.' 'File Explorer restarts - the taskbar disappears for a few seconds.' }
     if ($wybrane | Where-Object { $_.Typ -eq 'dism' }) { $uwagi += L 'DISM potrwa kilka minut; potem nie odinstalujesz starszych aktualizacji.' 'DISM takes a few minutes; older updates can no longer be uninstalled afterwards.' }
+    if ($wybrane | Where-Object { $_.Typ -eq 'driverstore' }) { $uwagi += L 'Usunięte starsze wersje sterowników nie wrócą - przed usunięciem powstanie punkt przywracania.' 'Removed older driver versions cannot be brought back - a System Restore point is created first.' }
     if ($wybrane | Where-Object { $_.Typ -eq 'winold' }) { $uwagi += L 'Po usunięciu Windows.old nie da się wrócić do poprzedniej wersji Windows.' 'After removing Windows.old you cannot go back to the previous Windows version.' }
     if ($wybrane | Where-Object { $_.Procesy }) { $uwagi += L 'Nie otwieraj przeglądarki w trakcie czyszczenia.' 'Do not open a browser while cleaning.' }
     if ($wybranePoz | Where-Object { $_.Pewnosc -eq 'niska' }) { $uwagi += L 'Zaznaczono pozycje o niskiej pewności (zapisy gier / duże pliki) - upewnij się, że ich nie potrzebujesz.' 'Low-confidence items are selected (game saves / large files) - make sure you do not need them.' }
@@ -1132,7 +1377,7 @@ $ZnaneMiejsca = @(
     @{ W = '\\Windows\\WinSxS$'; P = (L 'Magazyn komponentów Windows. Zmniejsza go tylko DISM (kategoria w planie); rozmiar zawyżony przez twarde linki.' 'Windows component store. Only DISM shrinks it (a plan category); the size is inflated by hard links.') }
     @{ W = '\\Windows\\Installer$'; P = (L 'Pamięć instalatorów MSI - nie usuwaj ręcznie, psuje odinstalowywanie programów.' 'MSI installer cache - do not delete by hand, it breaks uninstalling programs.') }
     @{ W = '\\Windows\\SoftwareDistribution$'; P = (L 'Aktualizacje Windows - kategoria „Cache Windows Update” w planie.' 'Windows updates - the "Windows Update cache" plan category.') }
-    @{ W = '\\Windows\\System32\\DriverStore'; P = (L 'Magazyn sterowników (np. sterownik karty graficznej). Nie usuwaj ręcznie.' 'Driver store (e.g. the graphics driver). Do not delete by hand.') }
+    @{ W = '\\Windows\\System32\\DriverStore'; P = (L 'Magazyn sterowników (np. sterownik karty graficznej). Nie usuwaj ręcznie - stare wersje usuwa kategoria „Starsze wersje sterowników” w planie.' 'Driver store (e.g. the graphics driver). Do not delete by hand - the "Older driver versions" plan category removes old versions.') }
     @{ W = '\\Windows\\servicing'; P = (L 'Pliki obsługi aktualizacji Windows - zarządza nimi system.' 'Windows update servicing files - managed by the system.') }
     @{ W = '\\Windows\.old$'; P = (L 'Poprzednia wersja Windows - kategoria w planie.' 'Previous Windows version - a plan category.') }
     @{ W = '^[A-Z]:\\pagefile\.sys$'; P = (L 'Plik stronicowania (pamięć wirtualna). Rozmiar ustawia się w Ustawieniach systemu.' 'Page file (virtual memory). Its size is set in the system settings.') }
@@ -1295,6 +1540,73 @@ function AnalizaAi($a) {
     catch { Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
 }
 
+# ---------- AUTOSTART: OPISY AI ----------
+# Jak w analizie dysku: rada tylko z tej listy, a dla wpisow chronionych ustala ja program
+$RadyAutostartu = if ($Jezyk -eq 'en') {
+    @('keep it on', 'can be turned off - start it by hand when needed', 'check whether you use it')
+} else {
+    @('zostaw włączone', 'można wyłączyć - uruchomisz ręcznie, gdy potrzebne', 'sprawdź, czy go używasz')
+}
+
+$SchematAutostartu = @{
+    type = 'object'
+    properties = @{
+        pozycje = @{ type = 'array'; items = @{ type = 'object'
+            properties = @{ id = @{ type = 'string' }; opis = @{ type = 'string' }; rada = @{ type = 'string'; enum = $RadyAutostartu } }
+            required = @('id', 'opis', 'rada') } }
+    }
+    required = @('pozycje')
+}
+
+$SysAutostart = if ($Jezyk -eq 'en') { @'
+You are LLMCleaner, a Windows cleanup assistant. You get a list of programs that start when the user signs in
+(name, command, publisher, source). For EACH item give:
+- "opis": what the program is and why it starts with Windows - based on the name, command and publisher,
+- "rada": one of the allowed values.
+Rules:
+- Chat apps, game launchers, cloud storage clients, update helpers of apps the user opens by hand and
+  "helper"/"tray" tools usually do not need to start with Windows: "can be turned off - start it by hand when needed".
+- Security software, drivers, audio, touchpad, keyboard or graphics panels: "keep it on".
+- If you do not know the program, write "unknown program" and choose "check whether you use it".
+- Do not invent program names that are not in the data. Description max. 12 words, in English.
+'@ } else { @'
+Jesteś LLMCleaner - asystentem sprzątania Windows. Dostajesz listę programów uruchamianych przy logowaniu
+(nazwa, polecenie, wydawca, źródło). Dla KAŻDEJ pozycji podaj:
+- "opis": czym jest program i po co startuje z Windows - na podstawie nazwy, polecenia i wydawcy,
+- "rada": jedna z dozwolonych wartości.
+Zasady:
+- Komunikatory, launchery gier, klienty chmury, pomocniki aplikacji otwieranych ręcznie i narzędzia
+  w zasobniku zwykle nie muszą startować z Windows: "można wyłączyć - uruchomisz ręcznie, gdy potrzebne".
+- Ochrona antywirusowa, sterowniki, panele dźwięku, touchpada, klawiatury i grafiki: "zostaw włączone".
+- Jeśli nie znasz programu, napisz "nieznany program" i wybierz "sprawdź, czy go używasz".
+- Nie zmyślaj nazw programów, których nie ma w danych. Opis maks. 12 słów, po polsku.
+'@ }
+
+# Opisy i rady modelu dla autostartu. Zwraca liczbe opisanych pozycji (albo -1 przy bledzie).
+function AutostartAi($wpisy) {
+    if (-not @($wpisy).Count) { return 0 }
+    if (-not (ZapewnijModel)) { return -1 }
+    $lista = @($wpisy | ForEach-Object { @{ id = $_.Id; nazwa = $_.Nazwa; polecenie = $_.Polecenie; wydawca = $_.Wydawca; zrodlo = $_.Zrodlo } })
+    Wypisz ((L '   Model opisuje {0} pozycji (ok. 20-40 s)...' '   The model is describing {0} items (about 20-40 s)...') -f $lista.Count) 'DarkGray'
+    try {
+        $odp = Ollama @(@{ role = 'system'; content = $SysAutostart },
+                        @{ role = 'user'; content = (ConvertTo-Json -InputObject $lista -Depth 5 -Compress) }) $SchematAutostartu
+        $n = 0
+        foreach ($o in @(($odp | ConvertFrom-Json -ErrorAction Stop).pozycje)) {
+            $w = $wpisy | Where-Object { $_.Id -eq $o.id } | Select-Object -First 1
+            if ($w -and $o.opis) {
+                $rada = if ($w.Chroniony) { $RadyAutostartu[0] } elseif ($o.rada -in $RadyAutostartu) { $o.rada } else { $RadyAutostartu[2] }
+                $w.Ai = "$($o.opis.Trim().TrimEnd('.;')). $(L 'Rada' 'Advice'): $rada."; $n++
+            }
+        }
+        Wypisz ((L '   Gotowe - opisano {0} pozycji.' '   Done - {0} items described.') -f $n) 'Green'
+        Log "Autostart - opisy modelu: $odp"
+        $script:Rozmowa = $null
+        $n
+    }
+    catch { Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
+}
+
 # ---------- AKTUALIZACJE ----------
 # Jedno zapytanie do GitHuba przy starcie (bez danych o komputerze); wylacza je -BezAktualizacji.
 $Repo = 'Banzamel/LLMCleaner'
@@ -1347,6 +1659,15 @@ function WykonajCzyszczenie {
         (($script:Pozostalosci | Where-Object { $_.Wybrana } | ForEach-Object { $_.Id }) -join ', '))
     $zegar = [Diagnostics.Stopwatch]::StartNew()
     $suma = 0.0
+
+    # Punkt przywracania przed zmianami, ktorych nie cofnie Kosz: rejestr, zadania, sterowniki
+    $wybranePoz = @($script:Pozostalosci | Where-Object { $_.Wybrana })
+    if (@($wybranePoz | Where-Object { -not (NaKosz $_) }).Count -or @($script:Kategorie | Where-Object { $_.Wybrana -and $_.Typ -eq 'driverstore' }).Count) {
+        Wypisz (L '  Tworzę punkt przywracania systemu (do 30 s)...' '  Creating a System Restore point (up to 30 s)...') 'Gray'
+        $pp = PunktPrzywracania
+        Wypisz ((L '  Punkt przywracania: {0}' '  Restore point: {0}') -f $pp.Opis) $(if ($pp.Ok) { 'Green' } else { 'Yellow' })
+        Log "Punkt przywracania: $($pp.Opis)"
+    }
 
     foreach ($k in ($script:Kategorie | Where-Object { $_.Wybrana })) {
         $zysk = 0.0; $bledy = 0
@@ -1402,6 +1723,14 @@ function WykonajCzyszczenie {
                 $zysk = [math]::Max(0, (WolneC) - $przed)
             }
             'docker' { docker builder prune -a -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' } }
+            'driverstore' {
+                foreach ($d in $k.Pakiety) {
+                    Pauza 0
+                    $wy = & pnputil.exe /delete-driver $d.Inf 2>&1
+                    if ($LASTEXITCODE -eq 0) { $zysk += $d.Bajty; Log "Sterownik usuniety: $($d.Inf) $($d.Nazwa) $($d.Wersja) ($(Rozmiar $d.Bajty))" }
+                    else { $bledy++; Log "Sterownik zostawiony: $($d.Inf) $($d.Nazwa) $($d.Wersja): $($wy -join ' ')" }
+                }
+            }
         }
         $suma += $zysk
         $kolor = if ($zysk -gt 50MB) { 'Green' } else { 'Gray' }
@@ -1415,18 +1744,11 @@ function WykonajCzyszczenie {
     }
 
     Add-Type -AssemblyName Microsoft.VisualBasic
-    $wybranePoz = @($script:Pozostalosci | Where-Object { $_.Wybrana })
     $kopie = $null
     if ($wybranePoz.Count) {
         Wypisz ''
         Wypisz (L '  Pozostałości po odinstalowanych programach i grach:' '  Leftovers of uninstalled programs and games:') 'Cyan'
         $kopie = Join-Path $LogDir ("kopie_rejestru\{0}" -f (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
-        if (@($wybranePoz | Where-Object { $_.Typ -eq 'rejestr' }).Count) {
-            Wypisz (L '  Tworzę punkt przywracania systemu (do 30 s)...' '  Creating a System Restore point (up to 30 s)...') 'Gray'
-            $pp = PunktPrzywracania
-            Wypisz ((L '  Punkt przywracania: {0}' '  Restore point: {0}') -f $pp.Opis) $(if ($pp.Ok) { 'Green' } else { 'Yellow' })
-            Log "Punkt przywracania: $($pp.Opis)"
-        }
         $doKosza = L '-> Kosz' '-> Recycle Bin'
         foreach ($p in $wybranePoz) {
             Pauza 0
@@ -1441,7 +1763,7 @@ function WykonajCzyszczenie {
                     Wypisz ("  {0,-60} {1,10}  {2}" -f $p.Sciezka, (Rozmiar $p.Bajty), $doKosza) 'Green'
                     Log "Do Kosza (plik): $($p.Sciezka) ($(Rozmiar $p.Bajty))"
                 }
-                else {
+                elseif ($p.Typ -eq 'rejestr') {
                     New-Item -ItemType Directory -Force $kopie | Out-Null
                     $plik = Join-Path $kopie ("{0}_{1}.reg" -f $p.Id, ($p.Nazwa -replace '[^\w\-\. ]', '_'))
                     & reg.exe export $p.Sciezka $plik /y 2>&1 | Out-Null
@@ -1450,14 +1772,35 @@ function WykonajCzyszczenie {
                     Wypisz ("  {0,-60} {1,10}" -f $p.Sciezka, (L 'usunięty' 'deleted')) 'Green'
                     Log "Rejestr usuniety: $($p.Sciezka) (kopia: $plik)"
                 }
+                elseif ($p.Typ -eq 'wartosc') {
+                    New-Item -ItemType Directory -Force $kopie | Out-Null
+                    $plik = Join-Path $kopie ("{0}_{1}.reg" -f $p.Id, ($p.Nazwa -replace '[^\w\-\. ]', '_'))
+                    KopiaWartosci $p.Sciezka $p.Wartosc $plik
+                    Remove-ItemProperty -LiteralPath "Registry::$($p.Sciezka)" -Name $p.Wartosc -Force -ErrorAction Stop
+                    Wypisz ("  {0,-60} {1,10}" -f (PokazPozostalosc $p), (L 'usunięty' 'deleted')) 'Green'
+                    Log "Rejestr usuniety: $($p.Sciezka) -> $($p.Wartosc) (kopia: $plik)"
+                }
+                elseif ($p.Typ -eq 'zadanie') {
+                    New-Item -ItemType Directory -Force $kopie | Out-Null
+                    $plik = Join-Path $kopie ("{0}_{1}.xml" -f $p.Id, ($p.Nazwa -replace '[^\w\-\. ]', '_'))
+                    $xml = Export-ScheduledTask -TaskName $p.Nazwa -TaskPath $p.Folder
+                    if (-not $xml) { throw (L 'nie udało się zrobić kopii - zadanie zostawione' 'backup failed - task kept') }
+                    [IO.File]::WriteAllText($plik, $xml, [Text.Encoding]::Unicode)
+                    Unregister-ScheduledTask -TaskName $p.Nazwa -TaskPath $p.Folder -Confirm:$false -ErrorAction Stop
+                    Wypisz ("  {0,-60} {1,10}" -f (PokazPozostalosc $p), (L 'usunięte' 'deleted')) 'Green'
+                    Log "Zadanie usuniete: $($p.Sciezka) (kopia: $plik)"
+                }
             }
             catch {
                 Wypisz ("  {0}: {1}" -f $p.Sciezka, $_.Exception.Message) 'Yellow'
                 Log "Blad pozostalosci $($p.Sciezka): $($_.Exception.Message)"
             }
         }
-        if (@($wybranePoz | Where-Object { $_.Typ -eq 'rejestr' }).Count) {
+        if (@($wybranePoz | Where-Object { $_.Typ -in 'rejestr', 'wartosc' }).Count) {
             Wypisz ((L '  Kopie rejestru: {0} (dwuklik na pliku .reg przywraca klucz)' '  Registry backups: {0} (double-click a .reg file to restore the key)') -f $kopie) 'DarkGray'
+        }
+        if (@($wybranePoz | Where-Object { $_.Typ -eq 'zadanie' }).Count) {
+            Wypisz ((L '  Kopie zadań: {0} (Harmonogram zadań > Importuj zadanie przywraca zadanie z pliku .xml)' '  Task backups: {0} (Task Scheduler > Import Task restores a task from its .xml file)') -f $kopie) 'DarkGray'
         }
     }
 
