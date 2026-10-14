@@ -1967,6 +1967,20 @@ function WykonajCzyszczenie {
                 }
                 Wypisz (L '  Docker usuwa obrazy, wolumeny, sieci i cache...' '  Docker is removing images, volumes, networks and cache...') 'Gray'
                 docker system prune -a --volumes -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
+                # Od Dockera 23 prune --volumes usuwa tylko wolumeny anonimowe, nazwane trzeba usunac osobno
+                $wolumeny = @(docker volume ls -q 2>$null | Where-Object { $_ })
+                if ($wolumeny.Count) {
+                    Wypisz ((L '  Docker usuwa wolumeny: {0}...' '  Docker is removing volumes: {0}...') -f $wolumeny.Count) 'Gray'
+                    docker volume rm -f @wolumeny 2>&1 | Out-Null
+                    Log "Docker: usunieto wolumeny ($($wolumeny.Count))"
+                }
+                # Historia budowania (lista Builds w Docker Desktop) dla kazdego buildera; starsze buildx nie maja tej komendy
+                $buildery = @(docker buildx ls --format '{{.Name}}' 2>$null | Where-Object { $_ -and $_ -notmatch '\s' } | Select-Object -Unique)
+                if (-not $buildery.Count) { $buildery = @('') }
+                foreach ($b in $buildery) {
+                    $arg = @('buildx', 'history', 'rm', '--all') + $(if ($b) { '--builder', $b })
+                    docker @arg 2>&1 | Out-Null
+                }
                 $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Zajete)
             }
             'driverstore' {
