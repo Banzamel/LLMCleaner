@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.1 (2026-10-14)
+
+- **Remove a startup entry permanently**: the bin next to the switch on the *Startup apps* page deletes the entry after
+  a confirmation. A Run entry gets a `.reg` backup of just that value, a Startup folder shortcut goes to the Recycle Bin
+  and a task gets an `.xml` backup. The program itself is not uninstalled.
+- **Fixed: entries marked as dead that were not in the cleanup plan.** The *Startup apps* page called an entry dead
+  whenever its target file was missing, including Windows Installer shortcuts with no target and commands without a
+  full path. It now uses the same rule as the plan. The list also reloads after cleaning.
+- **Docker - everything unused** (opt-in): `docker system prune -a --volumes` removes stopped containers, images
+  without a container, unused volumes (including databases in them), networks and the build cache. Both Docker
+  categories now show their size from `docker system df` (reclaimable space) and say when Docker is not running.
+
 ## 1.5.0 (2026-10-14)
 
 - **Refreshed window, built from the accepted mockups.**

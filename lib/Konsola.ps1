@@ -140,7 +140,7 @@ function AutostartKonsola {
             $kolor = if ($w.Chroniony) { 'Gray' } elseif ($w.Wlaczony) { 'Green' } else { 'DarkGray' }
             Write-Host ("  {0} {1,2}. {2,-40} {3}" -f $znak, $i, $w.Nazwa, $w.Zrodlo) -ForegroundColor $kolor
             Write-Host ("           {0}{1}" -f $(if ($w.Wydawca) { "$($w.Wydawca): " }), $w.Polecenie) -ForegroundColor DarkGray
-            if (-not $w.Istnieje) { Write-Host (L '           plik programu nie istnieje - martwy wpis trafia do planu czyszczenia' '           the program file does not exist - a dead entry is listed in the cleanup plan') -ForegroundColor DarkYellow }
+            if ($w.Martwy) { Write-Host (L '           plik programu nie istnieje - martwy wpis trafia do planu czyszczenia' '           the program file does not exist - a dead entry is listed in the cleanup plan') -ForegroundColor DarkYellow }
             if ($w.Chroniony) { Write-Host ("           {0}: {1}" -f (L 'chronione' 'protected'), $w.Chroniony) -ForegroundColor DarkYellow }
             if ($w.Ai) { Write-Host "           $EtykietaAi`: $($w.Ai)" -ForegroundColor DarkCyan }
         }
