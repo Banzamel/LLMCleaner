@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3 (2026-10-14)
+
+- **Fixed: cleaning stopped with an error after the Docker step when it freed more than about 2.1 GB.** The cleanup
+  itself ran, but the freed space could not be counted and the remaining steps did not run. The same fix covers the
+  Windows.old and WinSxS steps.
+
 ## 1.5.2 (2026-10-14)
 
 - **Fixed: the window crashed while drawing the cleanup plan when one item was larger than about 2.1 GB** (for example

@@ -1803,25 +1803,25 @@ function WykonajCzyszczenie {
                 $przed = WolneC
                 UsunPoprzedniWindows
                 $bledy = @($k.Sciezki | Where-Object { Test-Path -LiteralPath $_ }).Count
-                $zysk = [math]::Max(0, (WolneC) - $przed)
+                $zysk = [math]::Max(0.0, (WolneC) - $przed)
             }
             'dism' {
                 Wypisz (L '  DISM pracuje - to potrwa kilka minut...' '  DISM is working - this takes a few minutes...') 'Gray'
                 $przed = WolneC
                 $p = Start-Process Dism.exe -ArgumentList '/Online', '/Cleanup-Image', '/StartComponentCleanup', '/ResetBase' -WindowStyle Hidden -PassThru
                 while (-not $p.WaitForExit(500)) { Pauza 0 }
-                $zysk = [math]::Max(0, (WolneC) - $przed)
+                $zysk = [math]::Max(0.0, (WolneC) - $przed)
             }
             'docker' {
                 $przed = (DockerDoOdzyskania).Cache
                 docker builder prune -a -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
-                $zysk = [math]::Max(0, $przed - (DockerDoOdzyskania).Cache)
+                $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Cache)
             }
             'dockerall' {
                 Wypisz (L '  Docker usuwa nieużywane obrazy, kontenery, wolumeny i cache...' '  Docker is removing unused images, containers, volumes and cache...') 'Gray'
                 $przed = (DockerDoOdzyskania).Razem
                 docker system prune -a --volumes -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
-                $zysk = [math]::Max(0, $przed - (DockerDoOdzyskania).Razem)
+                $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Razem)
             }
             'driverstore' {
                 foreach ($d in $k.Pakiety) {
