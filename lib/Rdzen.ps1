@@ -1829,6 +1829,13 @@ function WykonajCzyszczenie {
                 }
                 Wypisz (L '  Docker usuwa obrazy, wolumeny, sieci i cache...' '  Docker is removing images, volumes, networks and cache...') 'Gray'
                 docker system prune -a --volumes -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
+                # Od Dockera 23 prune --volumes usuwa tylko wolumeny anonimowe, nazwane trzeba usunac osobno
+                $wolumeny = @(docker volume ls -q 2>$null | Where-Object { $_ })
+                if ($wolumeny.Count) {
+                    Wypisz ((L '  Docker usuwa wolumeny: {0}...' '  Docker is removing volumes: {0}...') -f $wolumeny.Count) 'Gray'
+                    docker volume rm -f @wolumeny 2>&1 | Out-Null
+                    Log "Docker: usunieto wolumeny ($($wolumeny.Count))"
+                }
                 $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Zajete)
             }
             'driverstore' {
