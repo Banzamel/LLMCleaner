@@ -141,7 +141,7 @@ namespace LlmWin {
 }
 
 function PostepNaPasku([int]$stan, [double]$ile = 0, [double]$z = 1) {
-    if ($script:UI.Okno) { [LlmWin.Natywne]::PostepNaPasku($script:UI.Okno.Handle, $stan, [uint64]$ile, [uint64][Math]::Max(1, $z)) }
+    if ($script:UI.Okno) { [LlmWin.Natywne]::PostepNaPasku($script:UI.Okno.Handle, $stan, [uint64]$ile, [uint64][Math]::Max(1.0, $z)) }
 }
 
 # ---------- WYJSCIE Z RDZENIA ----------
@@ -668,7 +668,7 @@ function RysujSlupki($g, $p) {
         return
     }
     Tekst $g (L 'szary pasek = niezaznaczone w planie' 'grey bar = not selected in the plan') $s.Mala $s.TekstSlaby ($w - (Px 230)) 0 (Px 230) (Px 28) 'Right'
-    $max = [Math]::Max(1, ($dane | ForEach-Object { $_.Bajty } | Measure-Object -Maximum).Maximum)
+    $max = [Math]::Max(1.0, ($dane | ForEach-Object { $_.Bajty } | Measure-Object -Maximum).Maximum)
     $szerN = [Math]::Min((Px 210), [int]($w * 0.38))
     $xT = $szerN + (Px 14); $szerR = Px 76
     $szerT = $w - $xT - $szerR - (Px 14)
@@ -766,7 +766,7 @@ function RysujWierszPlanu($g, $w, $r, [bool]$hover) {
     $szerBar = Px 100
     if ($mierzalny) {
         Prostokat $g $k.Rozmiar ($sr - (Px 3)) $szerBar (Px 6) $s.Tor (Px 3)
-        $dl = [int][Math]::Max((Px 4), $szerBar * [double]$o.Bajty / [Math]::Max(1, $w.Max))
+        $dl = [int][Math]::Max((Px 4), $szerBar * [double]$o.Bajty / [Math]::Max(1.0, [double]$w.Max))
         Prostokat $g $k.Rozmiar ($sr - (Px 3)) $dl (Px 6) $(if ($o.Wybrana) { $s.Akcent } else { $s.SzaryPasek }) (Px 3)
     }
     Tekst $g $roz $s.Pogrubiona $(if ($mierzalny) { $s.Tekst } else { $s.TekstSlaby }) ($k.Rozmiar + $szerBar) ($sr - (Px 12)) (Px 90) (Px 24) 'Right'
