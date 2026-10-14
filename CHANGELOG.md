@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.5 (2026-10-14)
+
+- **Docker - everything** removes volumes one by one and checks afterwards which are left. Any volume Docker refuses to
+  remove is listed on screen and the reason is written to the log, together with the result of every Docker command.
+
 ## 1.5.4 (2026-10-14)
 
 - **Fixed: Docker - everything left named volumes behind.** Since Docker 23, `docker system prune --volumes` removes

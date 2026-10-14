@@ -1824,18 +1824,28 @@ function WykonajCzyszczenie {
                 $kontenery = @(docker ps -aq 2>$null | Where-Object { $_ })
                 if ($kontenery.Count) {
                     Wypisz ((L '  Docker zatrzymuje i usuwa kontenery: {0}...' '  Docker is stopping and removing containers: {0}...') -f $kontenery.Count) 'Gray'
-                    docker rm -f -v @kontenery 2>&1 | Out-Null
-                    Log "Docker: usunieto kontenery ($($kontenery.Count))"
+                    $wy = docker rm -f -v @kontenery 2>&1
+                    Log "Docker rm -f ($($kontenery.Count)): kod $LASTEXITCODE $(@($wy | Where-Object { "$_" -match 'rror' }) -join ' | ')"
                 }
                 Wypisz (L '  Docker usuwa obrazy, wolumeny, sieci i cache...' '  Docker is removing images, volumes, networks and cache...') 'Gray'
-                docker system prune -a --volumes -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
+                $wy = @(docker system prune -a --volumes -f 2>&1)
+                Log "Docker system prune: kod $LASTEXITCODE $($wy | Select-Object -Last 1)"
+                $wy | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
                 # Od Dockera 23 prune --volumes usuwa tylko wolumeny anonimowe, nazwane trzeba usunac osobno
                 $wolumeny = @(docker volume ls -q 2>$null | Where-Object { $_ })
                 if ($wolumeny.Count) {
                     Wypisz ((L '  Docker usuwa wolumeny: {0}...' '  Docker is removing volumes: {0}...') -f $wolumeny.Count) 'Gray'
-                    docker volume rm -f @wolumeny 2>&1 | Out-Null
-                    Log "Docker: usunieto wolumeny ($($wolumeny.Count))"
-                }
+                    foreach ($v in $wolumeny) {
+                        $wy = docker volume rm -f $v 2>&1
+                        if ($LASTEXITCODE -ne 0) { Log "Docker volume rm $v : kod $LASTEXITCODE $wy" }
+                    }
+                    $zostaly = @(docker volume ls -q 2>$null | Where-Object { $_ })
+                    Log "Docker: wolumeny przed $($wolumeny.Count), zostalo $($zostaly.Count) $($zostaly -join ', ')"
+                    if ($zostaly.Count) {
+                        Wypisz ((L '  Nie udało się usunąć wolumenów: {0}. Szczegóły w logu.' '  Could not remove volumes: {0}. Details in the log.') -f ($zostaly -join ', ')) 'Yellow'
+                        $bledy += $zostaly.Count
+                    }
+                } else { Log "Docker: docker volume ls nie zwrocil wolumenow (kod $LASTEXITCODE)" }
                 # Historia budowania (lista Builds w Docker Desktop) dla kazdego buildera; starsze buildx nie maja tej komendy
                 $buildery = @(docker buildx ls --format '{{.Name}}' 2>$null | Where-Object { $_ -and $_ -notmatch '\s' } | Select-Object -Unique)
                 if (-not $buildery.Count) { $buildery = @('') }
