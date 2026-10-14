@@ -12,9 +12,10 @@
          powstaje punkt przywracania systemu i kopia .reg.
 
     Pliki:
-      lib\Rdzen.ps1     skanowanie, plan, AI, czyszczenie
-      lib\Okno.ps1      okno graficzne (domyslnie)
-      lib\Konsola.ps1   interfejs tekstowy (-Konsola)
+      lib\Rdzen\         skanowanie, plan, AI, czyszczenie (bez interfejsu)
+      lib\Okno\          okno graficzne (domyslnie), strony w lib\Okno\Strony\
+      lib\Konsola\       interfejs tekstowy (-Konsola)
+      lib\*\cs\          wstawki C# kompilowane przez Add-Type
 
     Parametry:
       -Konsola          interfejs tekstowy zamiast okna (alias -Console)
@@ -38,7 +39,7 @@ param(
     [string]$Sid      # konto, ktore uruchomilo program (ustawia samo podnoszenie uprawnien)
 )
 
-$Wersja = '1.6.1'
+$Wersja = '1.6.2'
 $ErrorActionPreference = 'SilentlyContinue'
 $AppDir = $PSScriptRoot
 
@@ -72,12 +73,31 @@ if (-not $adm) {
     exit
 }
 
-. (Join-Path $AppDir 'lib\Rdzen.ps1')
+# Pliki programu w kolejnosci ladowania. Sa dolaczane kropka (dot-source) do tego skryptu, wiec
+# dziela jego zmienne ($Jezyk, $Podglad, $script:...) - dlatego nie sa modulami .psm1.
+$PlikiRdzenia = @(
+    'Rdzen\Wyjscie.ps1', 'Rdzen\Uzytkownik.ps1', 'Rdzen\Ustawienia.ps1', 'Rdzen\Pliki.ps1', 'Rdzen\Kategorie.ps1',
+    'Rdzen\Dyski.ps1', 'Rdzen\Skaner.ps1', 'Rdzen\Pozostalosci.ps1', 'Rdzen\Autostart.ps1', 'Rdzen\Plan.ps1',
+    'Rdzen\Ollama.ps1', 'Rdzen\Asystent.ps1', 'Rdzen\AnalizaDysku.ps1', 'Rdzen\Aktualizacje.ps1', 'Rdzen\Sterowniki.ps1',
+    'Rdzen\Czyszczenie.ps1'
+)
+$PlikiOkna = @(
+    'Okno\Podstawy.ps1', 'Okno\Motyw.ps1', 'Okno\Wyjscie.ps1', 'Okno\Rysowanie.ps1', 'Okno\Kontrolki.ps1', 'Okno\Lista.ps1',
+    'Okno\Stan.ps1', 'Okno\Strony\Przeglad.ps1', 'Okno\Strony\Plan.ps1', 'Okno\Strony\Analiza.ps1',
+    'Okno\Strony\Autostart.ps1', 'Okno\Strony\Sterowniki.ps1', 'Okno\Strony\Czyszczenie.ps1', 'Okno\Strony\Czat.ps1',
+    'Okno\Strony\Dziennik.ps1', 'Okno\Nawigacja.ps1', 'Okno\Polozenie.ps1', 'Okno\Okno.ps1'
+)
+$PlikiKonsoli = @(
+    'Konsola\Wspolne.ps1', 'Konsola\Dyski.ps1', 'Konsola\Plan.ps1', 'Konsola\Czat.ps1', 'Konsola\Analiza.ps1',
+    'Konsola\Autostart.ps1', 'Konsola\Sterowniki.ps1', 'Konsola\Konsola.ps1'
+)
+
+foreach ($plikProgramu in $PlikiRdzenia) { . (Join-Path $AppDir "lib\$plikProgramu") }
 if ($Konsola) {
-    . (Join-Path $AppDir 'lib\Konsola.ps1')
+    foreach ($plikProgramu in $PlikiKonsoli) { . (Join-Path $AppDir "lib\$plikProgramu") }
     UruchomKonsole
 }
 else {
-    . (Join-Path $AppDir 'lib\Okno.ps1')
+    foreach ($plikProgramu in $PlikiOkna) { . (Join-Path $AppDir "lib\$plikProgramu") }
     PokazOkno
 }

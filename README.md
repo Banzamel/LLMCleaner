@@ -187,13 +187,13 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 A folder is **not** treated as a leftover when its name or path matches an installed program, a Microsoft Store app,
 a service, a running process, a Start menu or desktop shortcut, or an installed Steam game. It is also skipped when it
 was modified in the last 30 days or is on the built-in list of system and driver folders
-(`$PomijaneNazwy` in the script).
+(`$PomijaneNazwy` in `lib\Rdzen\Pozostalosci.ps1`).
 
 ## Files and logs
 
 | Path | Contents |
 |---|---|
-| install folder | `LLMCleaner.ps1` (start), `lib\Rdzen.ps1` (scanning, plan, AI, cleaning), `lib\Okno.ps1` (window), `lib\Konsola.ps1` (text mode), `LLMCleaner.bat`, `Install-AI.ps1`, `config.json` (the model chosen in the installer) |
+| install folder | `LLMCleaner.ps1` (start), `lib\Rdzen\` (scanning, plan, AI, cleaning), `lib\Okno\` (window), `lib\Konsola\` (text mode), `LLMCleaner.bat`, `Install-AI.ps1`, `config.json` (the model chosen in the installer) |
 | `<install folder>\ai\ollama\` | the bundled Ollama engine |
 | `<install folder>\ai\models\` | AI models |
 | `%LOCALAPPDATA%\LLMCleaner\logs\` | one log per run: scan report, chosen plan, results, everything moved to the Recycle Bin |
@@ -235,6 +235,29 @@ about game studios, the model also invented titles. That is why:
 | A program no longer starts with Windows | *Startup apps* page → select it → *Turn on selected* (or Task Manager → *Startup apps*) |
 | Restore point *skipped by Windows* (*pominięty przez Windows*) | Windows creates at most one restore point per 24 hours by default; the `.reg` backups are still made |
 | App cache *skipped - running: …* (*pominięto - działa: …*) | close the app (also from the system tray) and run again |
+
+## Code layout
+
+| Folder | Contents |
+|---|---|
+| `LLMCleaner.ps1` | start: parameters, administrator rights, the list of files to load |
+| `lib\Rdzen\` | the core without any interface: user, categories, scanners, leftovers, startup apps, plan, Ollama and the AI assistant, disk analysis, updates, drivers, cleaning |
+| `lib\Okno\` | the window: theme, drawing, controls, lists, state, navigation; one file per page in `lib\Okno\Strony\` |
+| `lib\Konsola\` | text mode (`-Konsola`), one file per screen |
+| `lib\*\cs\` | C# helpers compiled with `Add-Type` (file locks, the Ollama job object, the fast disk scanner, Windows APIs for the window) |
+
+The files are dot-sourced by `LLMCleaner.ps1` in a fixed order (`$PlikiRdzenia`, `$PlikiOkna`, `$PlikiKonsoli`) and share
+its variables, so a new file has to be added to that list and to nothing else. The code is formatted with
+PSScriptAnalyzer using `PSScriptAnalyzerSettings.psd1`:
+
+```powershell
+Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+    $kod = Invoke-Formatter -ScriptDefinition (Get-Content $_.FullName -Raw) -Settings .\PSScriptAnalyzerSettings.psd1
+    [IO.File]::WriteAllText($_.FullName, $kod, [Text.UTF8Encoding]::new($true))
+}
+```
+
+Scripts must stay UTF-8 with BOM, because Windows PowerShell 5.1 reads files without it as ANSI.
 
 ## Building from source
 

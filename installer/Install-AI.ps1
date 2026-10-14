@@ -27,13 +27,15 @@ $Port = '127.0.0.1:11435'                  # ten sam co w LLMCleaner.ps1
 
 $T = @{
     en = @{ Title = 'LLMCleaner - AI assistant setup'; Dir = 'Folder'; Have = 'AI engine (Ollama) is already installed.'
-            Down = 'Downloading the AI engine (Ollama, about 1.4 GB)'; Unpack = 'Unpacking...'; Start = 'Starting the AI engine...'
-            Pull = 'Downloading model {0} (about 2.5-5 GB, this can take a while)...'; Ok = 'Done. The AI assistant is ready.'
-            Fail = 'AI setup failed: {0}'; Later = 'LLMCleaner works without AI. You can rerun this script later:'; Key = 'Press Enter to close' }
+        Down = 'Downloading the AI engine (Ollama, about 1.4 GB)'; Unpack = 'Unpacking...'; Start = 'Starting the AI engine...'
+        Pull = 'Downloading model {0} (about 2.5-5 GB, this can take a while)...'; Ok = 'Done. The AI assistant is ready.'
+        Fail = 'AI setup failed: {0}'; Later = 'LLMCleaner works without AI. You can rerun this script later:'; Key = 'Press Enter to close'
+    }
     pl = @{ Title = 'LLMCleaner - instalacja asystenta AI'; Dir = 'Folder'; Have = 'Silnik AI (Ollama) jest już zainstalowany.'
-            Down = 'Pobieram silnik AI (Ollama, ok. 1,4 GB)'; Unpack = 'Rozpakowuję...'; Start = 'Uruchamiam silnik AI...'
-            Pull = 'Pobieram model {0} (ok. 2,5-5 GB, to może chwilę potrwać)...'; Ok = 'Gotowe. Asystent AI jest gotowy.'
-            Fail = 'Instalacja AI nie powiodła się: {0}'; Later = 'LLMCleaner działa bez AI. Ten skrypt możesz uruchomić później:'; Key = 'Enter zamyka okno' }
+        Down = 'Pobieram silnik AI (Ollama, ok. 1,4 GB)'; Unpack = 'Rozpakowuję...'; Start = 'Uruchamiam silnik AI...'
+        Pull = 'Pobieram model {0} (ok. 2,5-5 GB, to może chwilę potrwać)...'; Ok = 'Gotowe. Asystent AI jest gotowy.'
+        Fail = 'Instalacja AI nie powiodła się: {0}'; Later = 'LLMCleaner działa bez AI. Ten skrypt możesz uruchomić później:'; Key = 'Enter zamyka okno'
+    }
 }[$Lang]
 
 $Host.UI.RawUI.WindowTitle = $T.Title
