@@ -20,6 +20,60 @@ $script:FiltrPlanu = 'wszystko'
 $script:Strona = 'przeglad'
 $script:Skala = 1.0
 
+# Funkcje Windows: konsola, skalowanie, ciemny pasek tytulu i przewijania, postep na pasku zadan
+if (-not ('LlmWin.Natywne' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace LlmWin {
+    [ComImport, Guid("ea1afb91-9e28-4b86-90e9-9e9f8a5eee6f"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface ITaskbarList3 {
+        void HrInit(); void AddTab(IntPtr h); void DeleteTab(IntPtr h); void ActivateTab(IntPtr h); void SetActiveAlt(IntPtr h);
+        void MarkFullscreenWindow(IntPtr h, [MarshalAs(UnmanagedType.Bool)] bool f);
+        void SetProgressValue(IntPtr h, ulong done, ulong total);
+        void SetProgressState(IntPtr h, int flags);
+    }
+    [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090"), ClassInterface(ClassInterfaceType.None)]
+    class TaskbarList { }
+    public static class Natywne {
+        [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+        [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, string l);
+        [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
+        [DllImport("gdi32.dll")] static extern int GetDeviceCaps(IntPtr dc, int i);
+        // DPI ekranu wedlug GDI - to samo, czego uzywa rysowanie tekstu (LOGPIXELSX = 88)
+        public static int DpiEkranu() {
+            IntPtr dc = GetDC(IntPtr.Zero);
+            try { return GetDeviceCaps(dc, 88); } finally { ReleaseDC(IntPtr.Zero, dc); }
+        }
+        [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(IntPtr h, string app, string id);
+        static ITaskbarList3 pasek;
+        // stan: 0 brak, 1 nieokreslony, 2 normalny, 4 blad
+        public static void PostepNaPasku(IntPtr h, int stan, ulong ile, ulong z) {
+            try {
+                if (pasek == null) { pasek = (ITaskbarList3)new TaskbarList(); pasek.HrInit(); }
+                pasek.SetProgressState(h, stan);
+                if (stan == 2 || stan == 4) { pasek.SetProgressValue(h, ile, z); }
+            } catch { }
+        }
+        public static void CiemnyPasekTytulu(IntPtr h) {
+            int tak = 1;
+            if (DwmSetWindowAttribute(h, 20, ref tak, 4) != 0) { DwmSetWindowAttribute(h, 19, ref tak, 4); }
+        }
+    }
+}
+'@
+}
+
+# Skalowanie ekranu (DPI) - koniecznie przed pierwsza czcionka. GDI+ zapamietuje DPI przy pierwszym uzyciu:
+# gdy czcionki powstawaly przed SetProcessDPIAware, wymiary (Px) i pola tekstowe byly liczone dla 100%,
+# a etykiety rysowane dla 125-200% - tekst nachodzil na siebie i byl uciety, a czat malutki.
+[void][LlmWin.Natywne]::SetProcessDPIAware()
+$script:Skala = [Math]::Max(1.0, [LlmWin.Natywne]::DpiEkranu() / 96.0)
+
 function Kolor([string]$hex) { [Drawing.ColorTranslator]::FromHtml($hex) }
 function Px([double]$n) { [int][Math]::Round($n * $script:Skala) }
 function Rozm([double]$w, [double]$h) { New-Object Drawing.Size((Px $w), (Px $h)) }
@@ -73,23 +127,28 @@ $script:Styl = @{}
 $paleta = if ($script:Ciemny) { $PaletaCiemna } else { $PaletaJasna }
 foreach ($k in $paleta.Keys) { $script:Styl[$k] = Kolor $paleta[$k] }
 $czcionki = (New-Object Drawing.Text.InstalledFontCollection).Families.Name
+# Wszystkie czcionki okna sa tutaj (w punktach - Windows przelicza je na piksele wedlug DPI)
 $script:Styl.Czcionka = New-Object Drawing.Font('Segoe UI', 10)
-$script:Styl.Mala = New-Object Drawing.Font('Segoe UI', 9.25)
-$script:Styl.MalaPogr = New-Object Drawing.Font('Segoe UI Semibold', 8.75)
-$script:Styl.Odznaka = New-Object Drawing.Font('Segoe UI Semibold', 7.5)
-$script:Styl.Kolumna = New-Object Drawing.Font('Segoe UI Semibold', 8.25)
+$script:Styl.Mala = New-Object Drawing.Font('Segoe UI', 9.5)
+$script:Styl.MalaPogr = New-Object Drawing.Font('Segoe UI Semibold', 9)
+$script:Styl.Odznaka = New-Object Drawing.Font('Segoe UI Semibold', 8)
+$script:Styl.Kolumna = New-Object Drawing.Font('Segoe UI Semibold', 8.5)
 $script:Styl.Pogrubiona = New-Object Drawing.Font('Segoe UI Semibold', 10.5)
+$script:Styl.Przycisk = New-Object Drawing.Font('Segoe UI Semibold', 10.5)
 $script:Styl.TytulKarty = New-Object Drawing.Font('Segoe UI Semibold', 12)
 $script:Styl.Srednia = New-Object Drawing.Font('Segoe UI Semibold', 13)
 $script:Styl.Liczba = New-Object Drawing.Font('Segoe UI Semibold', 16)
+$script:Styl.Logo = New-Object Drawing.Font('Segoe UI Semibold', 13)
 $script:Styl.Tytul = New-Object Drawing.Font('Segoe UI Semibold', 19)
-$script:Styl.Duza = New-Object Drawing.Font('Segoe UI Semibold', 30)
+$script:Styl.Duza = New-Object Drawing.Font('Segoe UI Semibold', 26)
 $script:Styl.Nav = New-Object Drawing.Font('Segoe UI', 10.5)
 $script:Styl.NavWybrany = New-Object Drawing.Font('Segoe UI Semibold', 10.5)
+$script:Styl.PoleTekstu = New-Object Drawing.Font('Segoe UI', 10.5)
+$script:Styl.Mono = New-Object Drawing.Font('Consolas', 9.5)
 # Ikony z czcionki Windows 10/11; bez niej nawigacja jest po prostu bez ikon
 if ($czcionki -contains 'Segoe MDL2 Assets') {
     $script:Styl.Ikony = New-Object Drawing.Font('Segoe MDL2 Assets', 12)
-    $script:Styl.IkonyMale = New-Object Drawing.Font('Segoe MDL2 Assets', 7.5)
+    $script:Styl.IkonyMale = New-Object Drawing.Font('Segoe MDL2 Assets', 8)
 }
 
 # Kolory linii logu (nazwy kolorow konsoli)
@@ -99,46 +158,6 @@ $KoloryOkna = if ($script:Ciemny) {
 } else {
     @{ Gray = Kolor '#374151'; DarkGray = Kolor '#9CA3AF'; White = Kolor '#111827'; Green = Kolor '#16A34A'; Yellow = Kolor '#B45309'
        Cyan = Kolor '#2563EB'; DarkCyan = [Drawing.Color]::Teal; DarkYellow = [Drawing.Color]::Peru }
-}
-
-# Funkcje Windows: konsola, skalowanie, ciemny pasek tytulu i przewijania, postep na pasku zadan
-if (-not ('LlmWin.Natywne' -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-namespace LlmWin {
-    [ComImport, Guid("ea1afb91-9e28-4b86-90e9-9e9f8a5eee6f"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface ITaskbarList3 {
-        void HrInit(); void AddTab(IntPtr h); void DeleteTab(IntPtr h); void ActivateTab(IntPtr h); void SetActiveAlt(IntPtr h);
-        void MarkFullscreenWindow(IntPtr h, [MarshalAs(UnmanagedType.Bool)] bool f);
-        void SetProgressValue(IntPtr h, ulong done, ulong total);
-        void SetProgressState(IntPtr h, int flags);
-    }
-    [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090"), ClassInterface(ClassInterfaceType.None)]
-    class TaskbarList { }
-    public static class Natywne {
-        [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-        [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, string l);
-        [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
-        [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
-        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(IntPtr h, string app, string id);
-        static ITaskbarList3 pasek;
-        // stan: 0 brak, 1 nieokreslony, 2 normalny, 4 blad
-        public static void PostepNaPasku(IntPtr h, int stan, ulong ile, ulong z) {
-            try {
-                if (pasek == null) { pasek = (ITaskbarList3)new TaskbarList(); pasek.HrInit(); }
-                pasek.SetProgressState(h, stan);
-                if (stan == 2 || stan == 4) { pasek.SetProgressValue(h, ile, z); }
-            } catch { }
-        }
-        public static void CiemnyPasekTytulu(IntPtr h) {
-            int tak = 1;
-            if (DwmSetWindowAttribute(h, 20, ref tak, 4) != 0) { DwmSetWindowAttribute(h, 19, ref tak, 4); }
-        }
-    }
-}
-'@
 }
 
 function PostepNaPasku([int]$stan, [double]$ile = 0, [double]$z = 1) {
@@ -278,16 +297,17 @@ function Przelacznik($g, [int]$x, [int]$y, [bool]$wl, [bool]$wyl) {
 }
 
 # Karta: panel z zaokraglonymi rogami. Rogi maluje kolorem rodzica, wnetrze swoim BackColor.
-function Karta([hashtable]$w = @{}, [switch]$BezRamki) {
+# Bez ramki - karta odcina sie od tla samym kolorem. -Ramka dodaje cienka ramke.
+function Karta([hashtable]$w = @{}, [switch]$Ramka) {
     $k = Kontrolka Panel $w
     if (-not $w.ContainsKey('BackColor')) { $k.BackColor = $script:Styl.Karta }
     if (-not $w.ContainsKey('Padding')) { $k.Padding = Marg 18 16 18 16 }
     PodwojnyBufor $k
-    $k.AccessibleDescription = $(if ($BezRamki) { 'bez-ramki' } else { '' })
+    $k.AccessibleDescription = $(if ($Ramka) { 'ramka' } else { '' })
     $k.Add_Paint({
         $_.Graphics.Clear($this.Parent.BackColor)
         $r = New-Object Drawing.Rectangle(0, 0, ($this.Width - 1), ($this.Height - 1))
-        WypelnijZaokraglony $_.Graphics $r (Px 12) $this.BackColor $(if ($this.AccessibleDescription -ne 'bez-ramki') { $script:Styl.Ramka })
+        WypelnijZaokraglony $_.Graphics $r (Px 12) $this.BackColor $(if ($this.AccessibleDescription -eq 'ramka') { $script:Styl.Ramka })
     })
     $k.Add_Resize({ $this.Invalidate() })
     $k
@@ -313,8 +333,9 @@ function Przycisk([string]$tekst, [string]$styl = 'glowny', [hashtable]$w = @{})
     $b.UseVisualStyleBackColor = $false
     $b.UseMnemonic = $false
     $b.Cursor = [Windows.Forms.Cursors]::Hand
-    if (-not $w.ContainsKey('Font')) { $b.Font = $script:Styl.Pogrubiona }
+    if (-not $w.ContainsKey('Font')) { $b.Font = $script:Styl.Przycisk }
     $b.Tag = @{ Styl = $styl; Hover = $false; Wcisniety = $false; Wybrany = $false; Ikona = $w.AccessibleName }
+    if ($styl -notin 'nav', 'link') { DopasujSzerokosc $b; $b.Add_TextChanged({ DopasujSzerokosc $this }) }
     $b.Add_MouseEnter({ $this.Tag.Hover = $true; $this.Invalidate() })
     $b.Add_MouseLeave({ $this.Tag.Hover = $false; $this.Tag.Wcisniety = $false; $this.Invalidate() })
     $b.Add_MouseDown({ $this.Tag.Wcisniety = $true; $this.Invalidate() })
@@ -322,6 +343,13 @@ function Przycisk([string]$tekst, [string]$styl = 'glowny', [hashtable]$w = @{})
     $b.Add_EnabledChanged({ $this.Invalidate() })
     $b.Add_Paint({ RysujPrzycisk $this $_.Graphics })
     $b
+}
+
+# Przycisk o stalej szerokosci rosnie, gdy napis by sie nie zmiescil (zamiast ucinac go wielokropkiem)
+function DopasujSzerokosc($b) {
+    if ("$($b.Dock)" -in 'Fill', 'Top', 'Bottom' -or -not $b.Text) { return }
+    $min = (SzerTekstu $b.Text $b.Font) + (Px 32)
+    if ($b.Width -lt $min) { $b.Width = $min }
 }
 
 function RysujPrzycisk($b, $g) {
@@ -387,6 +415,12 @@ function Etykieta([string]$tekst, [hashtable]$w = @{}) {
     if (-not $w.ContainsKey('Font')) { $l.Font = $script:Styl.Czcionka }
     if (-not $w.ContainsKey('ForeColor')) { $l.ForeColor = $script:Styl.Tekst }
     if (-not $w.ContainsKey('AutoSize') -and -not $w.ContainsKey('Dock')) { $l.AutoSize = $true }
+    # Etykieta zadokowana u gory lub u dolu zawsze miesci swoj tekst (inna czcionka systemowa, inne DPI)
+    if ($w.ContainsKey('Height') -and "$($l.Dock)" -in 'Top', 'Bottom') {
+        $wzor = if ($tekst) { $tekst } else { 'Ąg' }
+        $min = [Windows.Forms.TextRenderer]::MeasureText($wzor, $l.Font).Height + $l.Padding.Vertical
+        if ($l.Height -lt $min) { $l.Height = $min }
+    }
     $l
 }
 
@@ -941,7 +975,7 @@ function KafelkiZNotka($g, $p, $dane, [string]$t) {
     $szer = Px 200; $odst = Px 12; $h = $p.Height - 1
     $x = 0
     foreach ($d in $dane) {
-        Prostokat $g $x 0 $szer $h $s.Karta (Px 12) $s.Ramka
+        Prostokat $g $x 0 $szer $h $s.Karta (Px 12)
         Tekst $g $d.W $s.Liczba $s.Tekst ($x + (Px 18)) (Px 6) ($szer - (Px 24)) (Px 32)
         Tekst $g $d.O $s.Mala $s.TekstSlaby ($x + (Px 18)) (Px 36) ($szer - (Px 24)) (Px 22)
         $x += $szer + $odst
@@ -1338,7 +1372,7 @@ function StronaPrzeglad {
     $etap = Etykieta (L 'Skan trwa zwykle 1-3 minuty i niczego nie usuwa. Potem zobaczysz plan czyszczenia do sprawdzenia.' 'A scan usually takes 1-3 minutes and deletes nothing. Then you get a cleanup plan to review.') @{
         Dock = 'Top'; Height = (Px 44); ForeColor = $s.TekstSlaby; AutoEllipsis = $true }
     $rzad = Kontrolka Panel @{ Dock = 'Top'; Height = (Px 46) }
-    $btnStart = Przycisk (L 'Skanuj teraz' 'Scan now') 'glowny' @{ Dock = 'Left'; Width = (Px 200); Font = (New-Object Drawing.Font('Segoe UI Semibold', 11)) }
+    $btnStart = Przycisk (L 'Skanuj teraz' 'Scan now') 'glowny' @{ Dock = 'Left'; Width = (Px 200) }
     $btnPlan = Przycisk (L 'Zobacz plan czyszczenia' 'View the cleanup plan') 'glowny' @{ Dock = 'Left'; Width = (Px 214); Visible = $false }
     $btnOdRazu = Przycisk $(if ($Podglad) { L 'Podgląd - bez czyszczenia' 'Preview - no cleaning' } else { L 'Wyczyść od razu...' 'Clean now...' }) 'drugi' @{ Dock = 'Left'; Width = (Px 176); Visible = $false }
     Dokuj $rzad @($btnStart, $btnPlan, (Odstep 'Left' 10), $btnOdRazu)
@@ -1425,6 +1459,8 @@ function StronaPlan {
         }
     }
     $filtr.Tag.Opcje = @(@{ Id = 'wszystko'; T = (L 'Wszystko' 'All') }, @{ Id = 'zaznaczone'; T = (L 'Zaznaczone' 'Selected') }, @{ Id = 'reczne'; T = (L 'Na życzenie' 'Opt-in') })
+    $najszerszy = ($filtr.Tag.Opcje | ForEach-Object { SzerTekstu $_.T $s.Pogrubiona } | Measure-Object -Maximum).Maximum
+    $filtr.Width = [Math]::Max((Px 300), 3 * ([int]$najszerszy + (Px 24)) + (Px 6))
     $filtr.Add_MouseClick({
         $o = $this.Tag.Opcje
         $i = [Math]::Min($o.Count - 1, [Math]::Max(0, [int][Math]::Floor(($_.X - (Px 3)) / (($this.Width - (Px 6)) / $o.Count))))
@@ -1435,8 +1471,8 @@ function StronaPlan {
     $btnZal = Przycisk (L 'Zaznacz zalecane' 'Select recommended') 'ramka' @{ Dock = 'Right'; Width = (Px 160) }
     $btnOdz = Przycisk (L 'Odznacz wszystko' 'Clear selection') 'ramka' @{ Dock = 'Right'; Width = (Px 150) }
     Dokuj $pas @($szukaj, (Odstep 'Left' 12), $filtr, $btnOdz, (Odstep 'Right' 10), $btnZal)
-    $pas.Add_Resize({ if ($script:UI.SzukajKarta) { $script:UI.SzukajKarta.Width = [Math]::Max((Px 160), [Math]::Min((Px 320), $this.Width - (Px 644))) } })
-    $script:UI.BtnZalecane = $btnZal; $script:UI.BtnOdznacz = $btnOdz
+    $pas.Add_Resize({ if ($script:UI.SzukajKarta) { $script:UI.SzukajKarta.Width = [Math]::Max((Px 160), [Math]::Min((Px 320), $this.Width - $script:UI.FiltrPlanu.Width - $script:UI.BtnZalecane.Width - $script:UI.BtnOdznacz.Width - (Px 34))) } })
+    $script:UI.BtnZalecane = $btnZal; $script:UI.BtnOdznacz = $btnOdz; $script:UI.FiltrPlanu = $filtr
 
     # Lista z naglowkiem kolumn
     $k = Karta @{ Dock = 'Fill'; Padding = (Marg 2 4 2 8) }
@@ -1631,7 +1667,7 @@ function StronaCzat {
         else { (L 'Lokalny model {0} - działa na tym komputerze, nic nie wysyła do internetu i niczego nie usuwa.' 'Local model {0} - runs on this computer, sends nothing to the internet and never deletes anything.') -f $Model })
 
     $k = Karta @{ Dock = 'Fill'; Padding = (Marg 20 16 6 10) }
-    $czat = Kontrolka RichTextBox @{ Dock = 'Fill'; ReadOnly = $true; BorderStyle = 'None'; BackColor = $s.Karta; ForeColor = $s.Tekst; Font = (New-Object Drawing.Font('Segoe UI', 10.5)) }
+    $czat = Kontrolka RichTextBox @{ Dock = 'Fill'; ReadOnly = $true; BorderStyle = 'None'; BackColor = $s.Karta; ForeColor = $s.Tekst; Font = $s.PoleTekstu }
     # Tekst powitalny wpisuje Shown - RichTextBox gubi kolory ustawione przed utworzeniem okna
     $czat.Tag = $(if ($BezLLM) { '' }
                    else { L "Zapytaj o plan, foldery, programy albo gry. Asystent zna wyniki skanu, analizy dysku i listę autostartu.`r`nPrzed skanem odpowiada tylko ogólnie - żeby pytać o pliki tego komputera, najpierw kliknij `„Skanuj`”.`r`nPierwsze pytanie uruchamia model (ok. 10-20 s).`r`n`r`n" "Ask about the plan, folders, programs or games. The assistant knows the scan results, the disk analysis and the startup list.`r`nBefore a scan it only answers in general terms - to ask about the files on this computer, click ""Scan"" first.`r`nThe first question starts the model (about 10-20 s).`r`n`r`n" })
@@ -1643,7 +1679,7 @@ function StronaCzat {
     $dol = Karta @{ Dock = 'Bottom'; Height = (Px 62); Padding = (Marg 20 10 10 10) }
     $btnW = Przycisk (L 'Wyślij' 'Send') 'glowny' @{ Dock = 'Right'; Width = (Px 120) }
     $pole = Kontrolka Panel @{ Dock = 'Fill'; Padding = (Marg 0 10 12 0) }
-    $pyt = Kontrolka TextBox @{ Dock = 'Fill'; BorderStyle = 'None'; BackColor = $s.Karta; ForeColor = $s.Tekst; Font = (New-Object Drawing.Font('Segoe UI', 10.5)) }
+    $pyt = Kontrolka TextBox @{ Dock = 'Fill'; BorderStyle = 'None'; BackColor = $s.Karta; ForeColor = $s.Tekst; Font = $s.PoleTekstu }
     $pole.Controls.Add($pyt)
     Dokuj $dol @($btnW, $pole)
     $pyt.Add_KeyDown({ if ($_.KeyCode -eq 'Enter') { $_.SuppressKeyPress = $true; if ($script:UI.BtnWyslij.Enabled) { $script:UI.BtnWyslij.PerformClick() } } })
@@ -1658,7 +1694,7 @@ function StronaDziennik {
     $str = Strona
     $n = Naglowek (L 'Dziennik' 'Log') ((L 'Przebieg skanu i czyszczenia. Pełny log: {0}' 'Scan and cleaning progress. Full log: {0}') -f $LogPlik)
     $k = Karta @{ Dock = 'Fill'; Padding = (Marg 18 14 6 10) }
-    $log = Kontrolka RichTextBox @{ Dock = 'Fill'; ReadOnly = $true; BorderStyle = 'None'; BackColor = $s.Karta; ForeColor = $s.Tekst; Font = (New-Object Drawing.Font('Consolas', 9.5)); WordWrap = $false }
+    $log = Kontrolka RichTextBox @{ Dock = 'Fill'; ReadOnly = $true; BorderStyle = 'None'; BackColor = $s.Karta; ForeColor = $s.Tekst; Font = $s.Mono; WordWrap = $false }
     $k.Controls.Add($log)
     $script:UI.Log = $log
     $script:UI.Przewijane += $log
@@ -1668,17 +1704,17 @@ function StronaDziennik {
 
 function PasekNawigacji {
     $s = $script:Styl
-    $nav = Kontrolka Panel @{ Dock = 'Left'; Width = (Px 232); BackColor = $s.Nawigacja; Padding = (Marg 12 20 12 14) }
+    $nav = Kontrolka Panel @{ Dock = 'Left'; Width = (Px 240); BackColor = $s.Nawigacja; Padding = (Marg 12 20 12 14) }
 
-    $logo = Kontrolka Panel @{ Dock = 'Top'; Height = (Px 70); BackColor = $s.Nawigacja }
+    # Logo i nazwa; numer wersji jest na pasku tytulu okna
+    $logo = Kontrolka Panel @{ Dock = 'Top'; Height = (Px 60); BackColor = $s.Nawigacja }
     $ico = Join-Path $AppDir 'LLMCleaner.ico'
     if (Test-Path -LiteralPath $ico) {
         $pb = Kontrolka PictureBox @{ Location = (Pkt 6 4); Size = (Rozm 36 36); SizeMode = 'Zoom'; BackColor = $s.Nawigacja }
         $pb.Image = ObrazZIkony $ico 48
         $logo.Controls.Add($pb)
     }
-    $logo.Controls.Add((Etykieta 'LLMCleaner' @{ Location = (Pkt 48 1); ForeColor = [Drawing.Color]::White; BackColor = $s.Nawigacja; Font = (New-Object Drawing.Font('Segoe UI Semibold', 13)) }))
-    $logo.Controls.Add((Etykieta ((L 'wersja {0}' 'version {0}') -f $Wersja) @{ Location = (Pkt 50 27); ForeColor = $s.NawSlaby; BackColor = $s.Nawigacja; Font = $s.Mala }))
+    $logo.Controls.Add((Etykieta 'LLMCleaner' @{ Location = (Pkt 48 7); Size = (Rozm 160 30); AutoSize = $false; TextAlign = 'MiddleLeft'; ForeColor = [Drawing.Color]::White; BackColor = $s.Nawigacja; Font = $s.Logo }))
 
     $script:UI.Nav = [ordered]@{}
     $pozycje = @(
@@ -1708,7 +1744,7 @@ function PasekNawigacji {
     # Dol paska: stan asystenta, tryb podgladu, aktualizacja
     $dol = Kontrolka Panel @{ Dock = 'Bottom'; Height = (Px 120); BackColor = $s.Nawigacja }
     $ai = Etykieta $(if ($BezLLM) { L 'Asystent AI: wyłączony' 'AI assistant: off' } else { (L "Asystent AI: na żądanie`r`n{0}" "AI assistant: on demand`r`n{0}") -f $Model }) @{
-        Dock = 'Bottom'; Height = (Px 44); ForeColor = $s.NawSlaby; BackColor = $s.Nawigacja; Font = $s.Mala; Padding = (Marg 6 8 0 0) }
+        Dock = 'Bottom'; Height = (Px 52); ForeColor = $s.NawSlaby; BackColor = $s.Nawigacja; Font = $s.Mala; Padding = (Marg 6 8 0 0) }
     $btnAkt = Przycisk '' 'zielony' @{ Dock = 'Bottom'; Height = (Px 40); Visible = $false }
     $dol.Controls.Add($btnAkt); $dol.Controls.Add((Kontrolka Panel @{ Dock = 'Bottom'; Height = (Px 8) }))
     if ($Podglad) {
@@ -1731,6 +1767,9 @@ function PrzywrocOkno($f) {
     # Inne skalowanie niz przy zapisie - rozmiar przeliczony
     $k = if ($u.Skala) { $script:Skala / [double]$u.Skala } else { 1.0 }
     $r = New-Object Drawing.Rectangle([int]$u.X, [int]$u.Y, [int]([int]$u.W * $k), [int]([int]$u.H * $k))
+    # Po zmianie skali okno moze wyjsc wieksze niz ekran - przyciete do obszaru roboczego
+    $ekran = [Windows.Forms.Screen]::FromRectangle($r).WorkingArea
+    $r.Width = [Math]::Min($r.Width, $ekran.Width); $r.Height = [Math]::Min($r.Height, $ekran.Height)
     # Tylko gdy okno trafi na ktorys z ekranow (monitor mogl zostac odlaczony)
     $widoczne = @([Windows.Forms.Screen]::AllScreens | Where-Object { $_.WorkingArea.IntersectsWith((New-Object Drawing.Rectangle($r.X, $r.Y, [Math]::Min($r.Width, (Px 200)), (Px 60)))) }).Count
     if ($widoczne -and $r.Width -ge $f.MinimumSize.Width -and $r.Height -ge $f.MinimumSize.Height) {
@@ -1768,10 +1807,9 @@ function PokazOkno {
     $script:Tryb = 'okno'
     # Konsola PowerShella nie jest potrzebna, gdy jest okno
     if (-not $script:TestPoStarcie) { [void][LlmWin.Natywne]::ShowWindow([LlmWin.Natywne]::GetConsoleWindow(), 0) }
-    # Ostry tekst przy skalowaniu ekranu 125-200%: okno samo przelicza wymiary (Px), Windows go nie rozmywa
-    [void][LlmWin.Natywne]::SetProcessDPIAware()
+    # Skala jest liczona przy wczytaniu tego pliku (przed czcionkami); GDI+ powinno widziec to samo DPI
     $gr = [Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
-    $script:Skala = [Math]::Max(1.0, $gr.DpiX / 96.0)
+    $script:DpiGdiPlus = $gr.DpiX
     $gr.Dispose()
 
     [Windows.Forms.Application]::EnableVisualStyles()
@@ -1779,7 +1817,10 @@ function PokazOkno {
     $script:UI.Podpowiedz = New-Object Windows.Forms.ToolTip
     $script:UI.Podpowiedz.AutoPopDelay = 15000
     $script:UI.Przewijane = @()
-    $f = Kontrolka Form @{ Text = "LLMCleaner $Wersja"; MinimumSize = (Rozm 1080 680); AutoScaleMode = 'None'; Font = $s.Czcionka; BackColor = $s.Tlo; KeyPreview = $true }
+    # Minimalny rozmiar nie wiekszy niz ekran (np. 175% na ekranie 1920x1080)
+    $obszar = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $min = New-Object Drawing.Size([Math]::Min((Px 1080), $obszar.Width), [Math]::Min((Px 680), $obszar.Height))
+    $f = Kontrolka Form @{ Text = "LLMCleaner $Wersja"; MinimumSize = $min; AutoScaleMode = 'None'; Font = $s.Czcionka; BackColor = $s.Tlo; KeyPreview = $true }
     PrzywrocOkno $f
     $ico = Join-Path $AppDir 'LLMCleaner.ico'
     if (Test-Path -LiteralPath $ico) { $f.Icon = New-Object Drawing.Icon $ico }
@@ -2004,6 +2045,6 @@ function PokazOkno {
     })
     $f.Add_FormClosed({ ZatrzymajOllama; Log 'Koniec (okno).' })
 
-    Log "Start (okno). Model: $Model, Podglad: $Podglad, BezLLM: $BezLLM, Jezyk: $Jezyk, Skala: $($script:Skala), Ciemny: $($script:Ciemny)"
+    Log "Start (okno). Model: $Model, Podglad: $Podglad, BezLLM: $BezLLM, Jezyk: $Jezyk, Skala: $($script:Skala) (GDI+ $($script:DpiGdiPlus) dpi), Ciemny: $($script:Ciemny)"
     [void]$f.ShowDialog()
 }

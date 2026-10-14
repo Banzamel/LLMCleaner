@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.1 (2026-10-14)
+
+- **Fixed: text cut off and overlapping at display scaling above 100%** (125%, 150%, 4K monitors). The window measured
+  its layout for 100% while labels were drawn for the real scaling, so headings ran into the text below them, button
+  and menu labels ended in "...", and the chat and search text was tiny. The whole window now scales together.
+- Buttons grow to fit their label instead of cutting it off, and labels are never shorter than their text.
+- A calmer, more minimal look: cards without borders, no version number under the logo (it is in the title bar),
+  slightly larger small text and a smaller headline on *Overview*.
+
 ## 1.6.0 (2026-10-14)
 
 - **New page: Drivers** (in the navigation bar between *Startup apps* and *AI assistant*, `d` in text mode).
