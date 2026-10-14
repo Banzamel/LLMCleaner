@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.5.0 (2026-10-14)
+
+- **Refreshed window, built from the accepted mockups.**
+  - **Overview**: a large *can be freed* figure with **View the cleanup plan** and **Clean now...**, four tiles
+    (categories with data, leftovers, locked, startup apps), a bar chart of what takes up the space (grey = not
+    selected), drives with usage bars, and a *Windows startup* card that links to the startup apps.
+  - **Cleanup plan**: search, an *All / Selected / Opt-in* filter, **Select recommended** and **Clear selection**,
+    and rows with a type badge (category, folder, file, shortcut, registry, task), two lines of text, a size bar and a
+    confidence label. Click a row to tick it. The bottom bar shows the selected total, the item count and the locked
+    size.
+  - **Startup apps**: a switch on every row that works at once, like Task Manager, with tiles for on, off and
+    protected, and the AI description under each program. Protected items show a lock label and their switch is
+    disabled.
+  - **Cleaning progress screen**: every step with its status (done, in progress, waiting, skipped), the freed space
+    and a progress bar, also on the taskbar icon. At the end it shows what was freed, free space before and after,
+    backups, the restore point and what was skipped. The window cannot be closed while cleaning runs.
+- **Dark mode** that follows the Windows app setting, including a dark title bar and scroll bars.
+- **Sharp at 125–200% display scaling**: the window scales itself instead of being blurred by Windows.
+- The window remembers its size, position and last page. **F5** scans, **Ctrl+1** to **Ctrl+6** switch pages.
+
 ## 1.4.0 (2026-10-14)
 
 - **Startup apps page** (window) and `s` (text mode): programs that start at sign-in from the Run registry keys,

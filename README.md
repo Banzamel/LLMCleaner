@@ -110,17 +110,25 @@ deletes anything, and *LLMCleaner (console)* for the text mode.
 
 The pages are in the navigation bar on the left.
 
-1. **Overview**: tick the drives to scan (each tile shows how full the drive is) and click **Scan**. Afterwards the
-   page shows how much space can be freed, with **View the cleanup plan**.
-2. **Cleanup plan**: tick or untick categories and leftovers. Hover over an item for its full description.
+1. **Overview**: tick the drives to scan (each row shows how full the drive is) and click **Scan** (or press **F5**).
+   Afterwards the page shows how much space can be freed, a chart of what takes it up and how many programs start
+   with Windows, with **View the cleanup plan** and **Clean now...**.
+2. **Cleanup plan**: click an item to tick or untick it. Search and the *All / Selected / Opt-in* filter narrow the
+   list, and **Select recommended** brings back the default plan. Hover over an item for its full description.
    - **AI: what were the leftovers?** fills in what each leftover was (marked *AI (may be wrong)*),
-   - **Clean selected...** shows a summary and asks for confirmation.
+   - **Clean selected...** shows a summary and asks for confirmation. A progress screen then shows every step, and
+     the result: space freed, free space before and after, backups and the restore point.
 3. **What takes up space**: pick a drive, click **Analyse**, then **AI: describe and advise**. Double-click an
    item to open it in File Explorer.
-4. **Startup apps**: select programs and click **Turn off selected** (or **Turn on selected**), or
-   **AI: what is it?**. The change takes effect at the next sign-in. Double-click an item to open its folder.
+4. **Startup apps**: the switch on each row turns a program on or off at once, like in Task Manager. Protected items
+   are read-only. **AI: what is it?** describes the programs. The change takes effect at the next sign-in.
+   Double-click an item to open its folder.
 5. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
 6. **Log**: everything the program does, also written to the log file.
+
+**Ctrl+1** to **Ctrl+6** switch pages. The window follows the Windows light or dark app mode and remembers its size,
+position and last page in `%LOCALAPPDATA%\LLMCleaner\okno.json`. To force a theme, set `"Motyw"` in that file to
+`"jasny"` (light) or `"ciemny"` (dark); `"auto"` follows Windows.
 
 ### Parameters
 
@@ -179,6 +187,7 @@ was modified in the last 30 days or is on the built-in list of system and driver
 | `<install folder>\ai\ollama\` | the bundled Ollama engine |
 | `<install folder>\ai\models\` | AI models |
 | `%LOCALAPPDATA%\LLMCleaner\logs\` | one log per run: scan report, chosen plan, results, everything moved to the Recycle Bin |
+| `%LOCALAPPDATA%\LLMCleaner\okno.json` | window size, position, last page and theme |
 | `%LOCALAPPDATA%\LLMCleaner\logs\kopie_rejestru\` | `.reg` backups of deleted registry keys and values, `.xml` backups of deleted Task Scheduler tasks |
 
 Logs and registry backups are kept after you uninstall the program.
