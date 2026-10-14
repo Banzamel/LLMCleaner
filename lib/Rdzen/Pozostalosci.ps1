@@ -205,18 +205,64 @@ function SteamOsierocone {
     }
 }
 
+# Folder, ktorego nigdy nie proponujemy do usuniecia, bez wzgledu na to, co znalazla regula: korzen dysku,
+# foldery systemowe w korzeniu (Kosz, System Volume Information...), foldery Windows, profilu i samego LLMCleanera
+$SystemoweWKorzeniu = @('$recycle.bin', 'system volume information', 'recovery', 'config.msi', 'msocache', 'perflogs',
+    'boot', 'windows', 'windows.old', 'program files', 'program files (x86)', 'programdata', 'users', 'documents and settings',
+    'onedrivetemp', 'intel', 'amd', 'nvidia', 'drivers', 'efi')
+function FolderChroniony([string]$sciezka) {
+    if (-not $sciezka) { return $true }
+    $s = $sciezka.Trim().TrimEnd('\').ToLower()
+    if ($s -notmatch '^[a-z]:\\.') { return $true }                      # korzen dysku albo dziwna sciezka
+    $czesci = $s -split '\\'
+    if ($czesci.Count -eq 2 -and ($czesci[1] -in $SystemoweWKorzeniu -or $czesci[1].StartsWith('$'))) { return $true }
+    foreach ($c in $WinDir, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData, $env:USERPROFILE, $env:APPDATA,
+        $env:LOCALAPPDATA, "$env:USERPROFILE\AppData\LocalLow", (Split-Path $env:USERPROFILE -Parent), $AppDir) {
+        if (-not $c) { continue }
+        $c = $c.TrimEnd('\').ToLower()
+        # Sam folder chroniony albo jego folder nadrzedny (np. P:\LLMCleaner, gdy program stoi w P:\LLMCleaner\app)
+        if ($c -eq $s -or $c.StartsWith("$s\")) { return $true }
+    }
+    $false
+}
+
+# Folder zawiera zainstalowany program, biblioteke Steam albo gre Epic (np. G:\Steam, P:\Git) - wtedy nie jest pozostaloscia
+function ZawieraZainstalowane([string]$sciezka, $zainst, $chronione) {
+    $s = $sciezka.TrimEnd('\').ToLower()
+    foreach ($p in @($zainst.Sciezki) + @($chronione)) {
+        if (-not $p) { continue }
+        $p = "$p".TrimEnd('\').ToLower()
+        if ($p -eq $s -or $p.StartsWith("$s\")) { return $true }
+    }
+    $false
+}
+
+# Gra z Epic Games Launcher ma w swoim folderze podfolder .egstore. Folder nadrzedny gry (np. G:\ albo
+# Program Files) NIE jest biblioteka Epic - stoja w nim zwykle inne programy i gry. Dlatego folder spoza
+# folderu "Epic Games" trafia na liste tylko wtedy, gdy ma .egstore, a korzen dysku nigdy nie jest traktowany
+# jak biblioteka (wczesniej regula proponowala do usuniecia cale G:\Steam czy P:\Git).
 function EpicOsierocone {
     $man = "$env:ProgramData\Epic\EpicGamesLauncher\Data\Manifests"
     if (-not (Test-Path -LiteralPath $man)) { return }
     $zainst = @{}; $rodzice = @{ "$env:ProgramFiles\Epic Games".ToLower() = 1 }
     foreach ($i in Get-ChildItem -LiteralPath $man -Filter *.item) {
-        $loc = (Get-Content -LiteralPath $i.FullName -Raw | ConvertFrom-Json).InstallLocation
-        if ($loc) { $loc = $loc.TrimEnd('\').ToLower(); $zainst[$loc] = 1; $rodzice[(Split-Path $loc -Parent)] = 1 }
+        try { $loc = (Get-Content -LiteralPath $i.FullName -Raw | ConvertFrom-Json).InstallLocation } catch { BladSkanu "manifest Epic $($i.Name)" $_; continue }
+        if (-not $loc) { continue }
+        $loc = $loc.Replace('/', '\').TrimEnd('\').ToLower()
+        $zainst[$loc] = 1
+        $r = Split-Path $loc -Parent
+        if ($r) { $rodzice[$r] = 1 }   # korzen zostaje jako G:\ (samo G: to biezacy folder dysku)
     }
+    $script:EpicZainstalowane = @($zainst.Keys)
     foreach ($r in @($rodzice.Keys | Where-Object { NaWybranymDysku $_ })) {
+        $folderEpic = (Split-Path $r -Leaf) -like '*epic*'
         foreach ($d in Get-ChildItem -LiteralPath $r -Directory -Force) {
             if ($zainst[$d.FullName.ToLower()] -or $d.Name -in 'Launcher', 'DirectXRedist' -or $d.Name -like 'UE_*') { continue }
-            @{ Typ = 'folder'; Sciezka = $d.FullName; Nazwa = $d.Name; Pewnosc = 'wysoka'; Gra = $true
+            if ($d.Attributes -band $REPARSE -or $d.Attributes -band [IO.FileAttributes]::System -or (FolderChroniony $d.FullName)) { continue }
+            $egstore = Test-Path -LiteralPath (Join-Path $d.FullName '.egstore')
+            if (-not $egstore -and -not $folderEpic) { continue }
+            @{ Typ = 'folder'; Sciezka = $d.FullName; Nazwa = $d.Name; Gra = $true
+                Pewnosc = $(if ($egstore) { 'wysoka' } else { 'srednia' })
                 Dlaczego = (L 'Folder gry Epic, której nie ma na liście zainstalowanych w Epic Games Launcher.' 'Epic game folder that is not on the Epic Games Launcher list of installed games.')
             }
         }
@@ -224,6 +270,7 @@ function EpicOsierocone {
 }
 
 function SkanujPozostalosci {
+    $script:EpicZainstalowane = @()
     $wpisy = @(KluczeOdinstalowania)
     $martwe = @(MartweWpisy $wpisy)
     $martweKlucze = @($martwe | ForEach-Object { $_.Sciezka })
@@ -245,7 +292,7 @@ function SkanujPozostalosci {
             try {
                 [void]$wszystkieNazwy.Add((Normalizuj $d.Name))
                 if ($d.Attributes -band $REPARSE -or $d.Attributes -band [IO.FileAttributes]::System) { continue }
-                if (Pomijana $d.Name) { continue }
+                if ((Pomijana $d.Name) -or (FolderChroniony $d.FullName)) { continue }
                 if (NalezyDoProgramu $d.Name $d.FullName $zainst) { continue }
                 $doSprawdzenia += @{ D = $d; Zapisy = $k.Gra }
             }
@@ -274,7 +321,10 @@ function SkanujPozostalosci {
     $gry = @()
     try { $gry += @(SteamOsierocone) } catch { BladSkanu 'Steam' $_ }
     try { $gry += @(EpicOsierocone) } catch { BladSkanu 'Epic' $_ }
+    # Bezpiecznik: folder gry nie moze zawierac zainstalowanego programu, biblioteki Steam ani gry Epic
+    $chronione = @(SteamBiblioteki) + @($script:EpicZainstalowane)
     foreach ($g in $gry) {
+        if ((FolderChroniony $g.Sciezka) -or (ZawieraZainstalowane $g.Sciezka $zainst $chronione)) { Log "Pominieto chroniony folder gry: $($g.Sciezka)"; continue }
         try { $m = ZmierzFolder $g.Sciezka; $g.Bajty = $m.Bajty; $g.Ostatnio = $m.Ostatnio; $wyniki.Add($g) }
         catch { BladSkanu "gra $($g.Sciezka)" $_ }
     }

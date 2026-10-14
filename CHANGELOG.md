@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.3 (2026-10-14)
+
+- **Fixed: whole folders such as `G:\Steam`, `P:\Git` or `G:\$RECYCLE.BIN` were ticked as Epic game leftovers.**
+  When an Epic game was installed straight on a drive (for example `G:\Fortnite`), the scan treated the whole drive
+  root as an Epic library and listed every folder on it. Now a folder outside the *Epic Games* folder counts as an
+  Epic game only if it has Epic's `.egstore` folder, and a drive root is never treated as a library.
+- New safety checks for every leftover: a drive root, the Recycle Bin, *System Volume Information*, Windows, Program
+  Files, the user profile and LLMCleaner's own folder are never listed, nor a game folder that contains an installed
+  program, a Steam library or an installed Epic game. Folders over 10 GB are never ticked in advance, and the
+  cleaning step itself refuses to delete a protected folder.
+- **Fixed: the AI assistant gave no answer after a large scan.** The whole report (over 100,000 characters) did not
+  fit in the model's context. The chat now gets a compact report with the largest items and a count of the rest, and
+  only the last few questions; *AI: what were the leftovers?* describes them 30 at a time. Model errors, with
+  Ollama's own message, are now written to the log file.
+- **New page: Settings** (Ctrl+8): language, theme, AI assistant on/off, AI model, update check and *always start in
+  preview mode*, with **Save and restart**.
+- The installer's last page can start LLMCleaner normally (ticked) or in preview mode.
+
 ## 1.6.2 (2026-10-14)
 
 - No visible changes: the code is reorganised so it is easier to work on. The three large files in `lib` are split

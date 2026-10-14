@@ -10,7 +10,8 @@ if (Test-Path -LiteralPath $script:OknoPlik) {
 }
 
 function MotywCiemny {
-    $m = "$($script:Ustawienia.Motyw)"
+    # Motyw ze strony Ustawienia ma pierwszenstwo przed starszym polem w okno.json
+    $m = if ($Konfiguracja -and $Konfiguracja.Motyw) { "$($Konfiguracja.Motyw)" } else { "$($script:Ustawienia.Motyw)" }
     if ($m -in 'ciemny', 'dark') { return $true }
     if ($m -in 'jasny', 'light') { return $false }
     (Get-ItemProperty "$HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").AppsUseLightTheme -eq 0

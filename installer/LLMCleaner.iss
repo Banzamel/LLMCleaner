@@ -50,7 +50,8 @@ english.ModelSub=The AI engine (Ollama, 1.4 GB) and the model are stored in the 
 english.Model4b=qwen3:4b-instruct - recommended, fast, fits GPUs with 6 GB VRAM (2.5 GB download)
 english.Model8b=qwen3:8b - smarter, needs about 8 GB VRAM, slower on smaller GPUs (5.2 GB download)
 english.RunAi=Setting up the AI assistant (Ollama + model)...
-english.Launch=Launch LLMCleaner in preview mode (nothing is deleted)
+english.Launch=Launch LLMCleaner
+english.LaunchPreview=Launch LLMCleaner in preview mode (nothing is deleted)
 english.Docs=Read the documentation
 english.ShortPreview=preview
 english.ShortConsole=console
@@ -63,7 +64,8 @@ polish.ModelSub=Silnik AI (Ollama, 1,4 GB) i model trafiają do folderu programu
 polish.Model4b=qwen3:4b-instruct - zalecany, szybki, mieści się w kartach z 6 GB VRAM (2,5 GB)
 polish.Model8b=qwen3:8b - mądrzejszy, potrzebuje ok. 8 GB VRAM, wolniejszy na słabszych kartach (5,2 GB)
 polish.RunAi=Instaluję asystenta AI (Ollama + model)...
-polish.Launch=Uruchom LLMCleaner w trybie podglądu (nic nie zostanie usunięte)
+polish.Launch=Uruchom LLMCleaner
+polish.LaunchPreview=Uruchom LLMCleaner w trybie podglądu (nic nie zostanie usunięte)
 polish.Docs=Otwórz dokumentację
 polish.ShortPreview=podgląd
 polish.ShortConsole=konsola
@@ -106,9 +108,13 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powers
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Install-AI.ps1"" -Model ""{code:GetModel}"" -Lang {code:GetLang}"; \
   StatusMsg: "{cm:RunAi}"; Tasks: ai; Flags: waituntilterminated
+; Two launch options on the last page: normal mode (ticked) and preview mode (nothing is deleted)
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"""; \
+  WorkingDir: "{app}"; Description: "{cm:Launch}"; Flags: postinstall nowait skipifsilent
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"" -Podglad"; \
-  WorkingDir: "{app}"; Description: "{cm:Launch}"; Flags: postinstall nowait skipifsilent unchecked
+  WorkingDir: "{app}"; Description: "{cm:LaunchPreview}"; Flags: postinstall nowait skipifsilent unchecked
 Filename: "{#AppURL}#readme"; Description: "{cm:Docs}"; Flags: postinstall shellexec nowait skipifsilent unchecked
 
 [UninstallRun]

@@ -24,7 +24,8 @@ function PasekNawigacji {
         @{ Id = 'autostart'; T = (L 'Autostart' 'Startup apps'); I = [char]0xE7E8 }
         @{ Id = 'sterowniki'; T = (L 'Sterowniki' 'Drivers'); I = [char]0xE772 }
         @{ Id = 'czat'; T = (L 'Asystent AI' 'AI assistant'); I = [char]0xE8BD }
-        @{ Id = 'log'; T = (L 'Dziennik' 'Log'); I = [char]0xE81C })
+        @{ Id = 'log'; T = (L 'Dziennik' 'Log'); I = [char]0xE81C }
+        @{ Id = 'ustawienia'; T = (L 'Ustawienia' 'Settings'); I = [char]0xE713 })
     $lista = Kontrolka Panel @{ Dock = 'Top'; Height = (Px (48 * $pozycje.Count)); BackColor = $s.Nawigacja }
     $el = @()
     $i = 0

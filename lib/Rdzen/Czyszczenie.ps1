@@ -183,6 +183,8 @@ function WykonajCzyszczenie {
             }
             try {
                 if ($p.Typ -eq 'folder') {
+                    # Ostatni bezpiecznik: korzenia dysku, Kosza i folderow systemowych nie usuwamy nigdy
+                    if (FolderChroniony $p.Sciezka) { throw (L 'folder chroniony - zostawiony' 'protected folder - kept') }
                     [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p.Sciezka, 'OnlyErrorDialogs', 'SendToRecycleBin')
                     Wypisz ("  {0,-60} {1,10}  {2}" -f $p.Sciezka, (Rozmiar $p.Bajty), $doKosza) 'Green'
                     Log "Do Kosza (folder): $($p.Sciezka) ($(Rozmiar $p.Bajty))"
