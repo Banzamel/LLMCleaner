@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0 (2026-10-14)
+
+- **New page: Drivers** (in the navigation bar between *Startup apps* and *AI assistant*, `d` in text mode).
+  **Check** looks for newer drivers for the devices in this PC on Windows Update (the same signed drivers as the
+  optional updates in Settings) and lists each one with its device, provider, class, download size, and the current
+  and new version and date. Everything found is ticked; click a row to untick it. **Install selected...** asks for
+  confirmation, creates a System Restore point and installs the drivers one by one, showing *downloading*,
+  *installing*, *installed* or *after restart* on each row.
+- The same page lists **devices with a problem in Device Manager** (no driver installed, cannot start, code 43 and
+  so on). Double-click opens Device Manager, and **Windows Update** opens the optional updates in Settings.
+- Windows Update is contacted only when you click **Check**, never at start.
+
 ## 1.5.4 (2026-10-14)
 
 - **Fixed: Docker - everything left named volumes behind.** Since Docker 23, `docker system prune --volumes` removes

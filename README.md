@@ -7,8 +7,9 @@
 **Smart Windows cleanup with a local AI assistant.** LLMCleaner finds junk files, caches and leftovers of uninstalled
 programs and games, shows you a plan with exact sizes, and cleans only after you confirm. An optional local AI model
 explains what the leftovers were and answers your questions. The AI engine ([Ollama](https://ollama.com)) is bundled
-in the program folder, so everything runs on your machine. The only network request is an optional update check
-against GitHub Releases (disable it with `-BezAktualizacji`).
+in the program folder, so everything runs on your machine. The only network requests are an optional update check
+against GitHub Releases (disable it with `-BezAktualizacji`) and the driver check on Windows Update, which runs only
+when you click **Check** on the *Drivers* page.
 
 > LLMCleaner has a **window** (default) and a **text mode** (`-Konsola`). The interface is in **English or Polish**,
 > chosen from the Windows display language (`-Jezyk en` / `-Jezyk pl` to override).
@@ -36,6 +37,9 @@ against GitHub Releases (disable it with `-BezAktualizacji`).
   Task Manager, so nothing is removed and it can be turned back on. Security software, drivers, hardware panels,
   updaters and parts of Windows are read-only. The AI can describe each program and suggest whether it needs to start
   with Windows.
+- **Driver updates.** The *Drivers* page looks for newer drivers for this PC's devices on Windows Update (the same
+  signed drivers as the optional updates in Settings), shows the current and new version of each, and installs the
+  ones you tick after a System Restore point. It also lists devices with a problem in Device Manager.
 - **Leftovers of uninstalled software:**
   - folders in `AppData`, `LocalLow`, `ProgramData` and `Program Files` that match no installed program,
   - Steam games removed without cleanup (folders without a manifest, shader caches, Workshop content) and Epic Games leftovers,
@@ -124,10 +128,14 @@ The pages are in the navigation bar on the left.
    are read-only. The bin next to the switch removes an entry permanently, with a `.reg` / `.xml` backup (shortcuts go
    to the Recycle Bin). **AI: what is it?** describes the programs. The change takes effect at the next sign-in.
    Double-click an item to open its folder.
-5. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
-6. **Log**: everything the program does, also written to the log file.
+5. **Drivers**: **Check** looks for newer drivers on Windows Update (usually 1-3 minutes). Each row shows the
+   device, the current and new version, and the download size; click a row to tick or untick it.
+   **Install selected...** creates a System Restore point and installs the ticked drivers one by one. Devices with a
+   problem in Device Manager are listed below; double-click opens Device Manager.
+6. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
+7. **Log**: everything the program does, also written to the log file.
 
-**Ctrl+1** to **Ctrl+6** switch pages. The window follows the Windows light or dark app mode and remembers its size,
+**Ctrl+1** to **Ctrl+7** switch pages. The window follows the Windows light or dark app mode and remembers its size,
 position and last page in `%LOCALAPPDATA%\LLMCleaner\okno.json`. To force a theme, set `"Motyw"` in that file to
 `"jasny"` (light) or `"ciemny"` (dark); `"auto"` follows Windows.
 
@@ -163,6 +171,7 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 | `p` | chat with the assistant; an empty line returns to the plan |
 | `a` | what takes up space on a drive; then `w` lets the AI describe the items |
 | `s` | startup apps; numbers turn programs on or off (after a *[y/N]* question), `w` lets the AI describe them |
+| `d` | drivers: looks for newer drivers on Windows Update; numbers or `*` install them (after a *[y/N]* question) |
 | `u` | install the new version (shown only when an update is available) |
 | `q` | quit without deleting anything |
 
