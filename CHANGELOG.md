@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2 (2026-10-14)
+
+- **Fixed: the window crashed while drawing the cleanup plan when one item was larger than about 2.1 GB** (for example
+  Docker images). The size bars and the taskbar progress now compute in 64-bit.
+
 ## 1.5.1 (2026-10-14)
 
 - **Remove a startup entry permanently**: the bin next to the switch on the *Startup apps* page deletes the entry after
