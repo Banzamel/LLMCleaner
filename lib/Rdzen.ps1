@@ -381,8 +381,8 @@ function ZbudujKategorie {
                  Opis = (L 'Wersje sterowników zastąpione nowszymi, np. stare sterowniki karty graficznej (często 1-5 GB). Sterowniki używane i najnowsza wersja każdego zostają. Potem nie da się wrócić do starszej wersji w Menedżerze urządzeń.' 'Driver versions replaced by newer ones, e.g. old graphics drivers (often 1-5 GB). Drivers in use and the newest version of each are kept. Afterwards you cannot roll back to an older version in Device Manager.') }
     }
     if (Get-Command docker) {
-        $k += @{ Id = 'dockerall'; Nazwa = (L 'Docker - wszystko nieużywane (obrazy, kontenery, wolumeny)' 'Docker - everything unused (images, containers, volumes)'); Typ = 'dockerall'; TylkoRecznie = $true
-                 Opis = (L 'docker system prune -a --volumes: zatrzymane kontenery, obrazy bez kontenera, nieużywane wolumeny (TAKŻE BAZY DANYCH w nich), sieci i cache budowania. Działające kontenery i ich dane zostają. Docker musi być uruchomiony. Na Docker Desktop miejsce wraca na dysk po kompaktowaniu dysku WSL.' 'docker system prune -a --volumes: stopped containers, images without a container, unused volumes (INCLUDING DATABASES in them), networks and the build cache. Running containers and their data are kept. Docker must be running. On Docker Desktop the space returns to the drive after the WSL disk is compacted.') }
+        $k += @{ Id = 'dockerall'; Nazwa = (L 'Docker - wszystko (kontenery, obrazy, wolumeny)' 'Docker - everything (containers, images, volumes)'); Typ = 'dockerall'; TylkoRecznie = $true
+                 Opis = (L 'Zatrzymuje i usuwa WSZYSTKIE kontenery, także działające, a potem docker system prune -a --volumes: wszystkie obrazy, wolumeny (TAKŻE BAZY DANYCH w nich), sieci i cache budowania. Docker zostaje pusty. Docker musi być uruchomiony. Na Docker Desktop miejsce wraca na dysk po kompaktowaniu dysku WSL.' 'Stops and removes ALL containers, including running ones, then docker system prune -a --volumes: all images, volumes (INCLUDING DATABASES in them), networks and the build cache. Docker is left empty. Docker must be running. On Docker Desktop the space returns to the drive after the WSL disk is compacted.') }
         $k += @{ Id = 'docker'; Nazwa = (L 'Docker - cache budowania' 'Docker build cache'); Typ = 'docker'; TylkoRecznie = $true
                  Opis = (L 'Tylko build cache. Obrazy, kontenery i wolumeny (w tym bazy danych) zostają.' 'Build cache only. Images, containers and volumes (including databases) are kept.') }
     }
@@ -471,9 +471,9 @@ function SkanujKategorie {
                 'docker' { $k.Bajty = [double](DockerDoOdzyskania).Cache; if (-not $script:DockerDziala) { $k.Uwaga = L 'Docker nie działa - uruchom go, żeby zmierzyć i wyczyścić.' 'Docker is not running - start it to measure and clean.' } }
                 'dockerall' {
                     $d = DockerDoOdzyskania
-                    $k.Bajty = [double]$d.Razem
+                    $k.Bajty = [double]$d.Zajete
                     if (-not $script:DockerDziala) { $k.Uwaga = L 'Docker nie działa - uruchom go, żeby zmierzyć i wyczyścić.' 'Docker is not running - start it to measure and clean.' }
-                    elseif ($d.Razem -gt 0) { $k.Uwaga = (L 'Do odzyskania: obrazy {0}, kontenery {1}, wolumeny {2}, cache budowania {3}. Zajęte razem: {4}.' 'Reclaimable: images {0}, containers {1}, volumes {2}, build cache {3}. Used in total: {4}.') -f (Rozmiar $d.Obrazy), (Rozmiar $d.Kontenery), (Rozmiar $d.Wolumeny), (Rozmiar $d.Cache), (Rozmiar $d.Zajete) }
+                    elseif ($d.Zajete -gt 0) { $k.Uwaga = (L 'Zajęte: obrazy {0}, kontenery {1}, wolumeny {2}, cache budowania {3}. W tym nieużywane: {4}.' 'Used: images {0}, containers {1}, volumes {2}, build cache {3}. Unused part: {4}.') -f (Rozmiar $d.Zaj.Obrazy), (Rozmiar $d.Zaj.Kontenery), (Rozmiar $d.Zaj.Wolumeny), (Rozmiar $d.Zaj.Cache), (Rozmiar $d.Razem) }
                 }
                 'driverstore' {
                     $k.Pakiety = @(StareSterowniki | Sort-Object { $_.Bajty } -Descending)
@@ -500,14 +500,16 @@ function DockerBajty([string]$s) {
     [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) * $mn
 }
 function DockerDoOdzyskania {
-    $w = @{ Obrazy = 0.0; Kontenery = 0.0; Wolumeny = 0.0; Cache = 0.0; Razem = 0.0; Zajete = 0.0 }
+    $w = @{ Obrazy = 0.0; Kontenery = 0.0; Wolumeny = 0.0; Cache = 0.0; Razem = 0.0; Zajete = 0.0; Zaj = @{ Obrazy = 0.0; Kontenery = 0.0; Wolumeny = 0.0; Cache = 0.0 } }
     $linie = @(docker system df --format '{{json .}}' 2>$null)
     $script:DockerDziala = $LASTEXITCODE -eq 0 -and $linie.Count
     foreach ($l in $linie) { try {
         $o = $l | ConvertFrom-Json -ErrorAction Stop
         $b = DockerBajty $o.Reclaimable
-        $w.Zajete += DockerBajty $o.Size
-        switch -Wildcard ($o.Type) { 'Images' { $w.Obrazy = $b } 'Containers' { $w.Kontenery = $b } '*Volumes' { $w.Wolumeny = $b } 'Build Cache' { $w.Cache = $b } }
+        $z = DockerBajty $o.Size
+        $w.Zajete += $z
+        $t = switch -Wildcard ($o.Type) { 'Images' { 'Obrazy' } 'Containers' { 'Kontenery' } '*Volumes' { 'Wolumeny' } 'Build Cache' { 'Cache' } }
+        if ($t) { $w[$t] = $b; $w.Zaj[$t] = $z }
     } catch { } }
     $w.Razem = $w.Obrazy + $w.Kontenery + $w.Wolumeny + $w.Cache
     $w
@@ -1818,10 +1820,16 @@ function WykonajCzyszczenie {
                 $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Cache)
             }
             'dockerall' {
-                Wypisz (L '  Docker usuwa nieużywane obrazy, kontenery, wolumeny i cache...' '  Docker is removing unused images, containers, volumes and cache...') 'Gray'
-                $przed = (DockerDoOdzyskania).Razem
+                $przed = (DockerDoOdzyskania).Zajete
+                $kontenery = @(docker ps -aq 2>$null | Where-Object { $_ })
+                if ($kontenery.Count) {
+                    Wypisz ((L '  Docker zatrzymuje i usuwa kontenery: {0}...' '  Docker is stopping and removing containers: {0}...') -f $kontenery.Count) 'Gray'
+                    docker rm -f -v @kontenery 2>&1 | Out-Null
+                    Log "Docker: usunieto kontenery ($($kontenery.Count))"
+                }
+                Wypisz (L '  Docker usuwa obrazy, wolumeny, sieci i cache...' '  Docker is removing images, volumes, networks and cache...') 'Gray'
                 docker system prune -a --volumes -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Wypisz "  $_" 'DarkGray' }
-                $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Razem)
+                $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Zajete)
             }
             'driverstore' {
                 foreach ($d in $k.Pakiety) {

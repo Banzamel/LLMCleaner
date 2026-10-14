@@ -78,8 +78,8 @@ against GitHub Releases (disable it with `-BezAktualizacji`).
 
 Everything stays inside the install folder: no separate Ollama installation, no tray icon, no autostart, no
 environment variables. The AI engine runs on a private port (`11435`) only while LLMCleaner is open, so it does not
-conflict with an Ollama you may have installed yourself. **Uninstalling removes the program, the AI engine and the
-models.**
+conflict with an Ollama you may have installed yourself. **Uninstalling removes the program, the AI engine, the
+models and `%LOCALAPPDATA%\LLMCleaner` (logs, window settings and the `.reg`/`.xml` backups).**
 
 The installer is not code-signed, so Windows SmartScreen may show a warning on the first run
 (*More info → Run anyway*).
