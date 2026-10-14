@@ -1836,6 +1836,13 @@ function WykonajCzyszczenie {
                     docker volume rm -f @wolumeny 2>&1 | Out-Null
                     Log "Docker: usunieto wolumeny ($($wolumeny.Count))"
                 }
+                # Historia budowania (lista Builds w Docker Desktop) dla kazdego buildera; starsze buildx nie maja tej komendy
+                $buildery = @(docker buildx ls --format '{{.Name}}' 2>$null | Where-Object { $_ -and $_ -notmatch '\s' } | Select-Object -Unique)
+                if (-not $buildery.Count) { $buildery = @('') }
+                foreach ($b in $buildery) {
+                    $arg = @('buildx', 'history', 'rm', '--all') + $(if ($b) { '--builder', $b })
+                    docker @arg 2>&1 | Out-Null
+                }
                 $zysk = [math]::Max(0.0, $przed - (DockerDoOdzyskania).Zajete)
             }
             'driverstore' {
