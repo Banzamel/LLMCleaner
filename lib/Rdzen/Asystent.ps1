@@ -50,6 +50,7 @@ Below is the scanner report and the current cleanup plan. Answer the user's ques
 games and the plan briefly and specifically, in English. You cannot delete or run anything - the user changes the plan.
 If they want to remove something outside the plan, explain how to do it safely by hand (e.g. uninstalling a program
 in Settings). Use only numbers from the report. If you do not know something, say so.
+The report lists only the largest leftovers - "podsumowanie" says how many more there are and their total size.
 '@
 }
 else {
@@ -59,6 +60,7 @@ Poniżej masz raport skanera i aktualny plan czyszczenia. Odpowiadaj krótko i k
 użytkownika o pliki, foldery, programy, gry i plan. Nie możesz niczego usuwać ani uruchamiać - plan zmienia
 użytkownik. Jeśli chce usunąć coś spoza planu, wyjaśnij, jak zrobić to bezpiecznie ręcznie
 (np. odinstalowanie programu w Ustawieniach). Używaj tylko liczb z raportu. Jeśli czegoś nie wiesz, powiedz to wprost.
+Raport zawiera tylko największe pozostałości - w „podsumowanie” jest, ile pozycji pominięto i ile razem zajmują.
 '@
 }
 
@@ -69,18 +71,22 @@ function WyjasnijPozostalosci {
     $lista = @($script:Pozostalosci | ForEach-Object { @{ id = $_.Id; typ = $_.Typ; nazwa = $_.Nazwa; sciezka = $_.Sciezka; zawiera = @($_.Zawiera) } })
     Wypisz ((L '   Model opisuje {0} pozycji (ok. 20-40 s)...' '   The model is describing {0} items (about 20-40 s)...') -f $lista.Count) 'DarkGray'
     try {
-        $odp = Ollama @(@{ role = 'system'; content = $SysWyjasnij },
-            @{ role = 'user'; content = (ConvertTo-Json -InputObject $lista -Depth 5 -Compress) }) $SchematWyjasnien
+        # Po 30 pozycji naraz - cala lista po duzym skanie nie miesci sie w oknie kontekstu modelu
         $n = 0
-        foreach ($w in @(($odp | ConvertFrom-Json -ErrorAction Stop).wyjasnienia)) {
-            $p = $script:Pozostalosci | Where-Object { $_.Id -eq $w.id } | Select-Object -First 1
-            if ($p -and $w.opis) { $p.Ai = $w.opis; $n++ }
+        for ($i = 0; $i -lt $lista.Count; $i += 30) {
+            $czesc = @($lista | Select-Object -Skip $i -First 30)
+            $odp = Ollama @(@{ role = 'system'; content = $SysWyjasnij },
+                @{ role = 'user'; content = (ConvertTo-Json -InputObject $czesc -Depth 5 -Compress) }) $SchematWyjasnien
+            Log "Wyjasnienia modelu: $odp"
+            foreach ($w in @(($odp | ConvertFrom-Json -ErrorAction Stop).wyjasnienia)) {
+                $p = $script:Pozostalosci | Where-Object { $_.Id -eq $w.id } | Select-Object -First 1
+                if ($p -and $w.opis) { $p.Ai = $w.opis; $n++ }
+            }
         }
         Wypisz ((L '   Gotowe - opisano {0} pozycji.' '   Done - {0} items described.') -f $n) 'Green'
-        Log "Wyjasnienia modelu: $odp"
         $n
     }
-    catch { Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
+    catch { Log "Blad modelu: $($_.Exception.Message)"; Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
 }
 
 # Rozmowa: $script:Rozmowa trzyma historie; Zapytaj zwraca odpowiedz albo $null
@@ -88,19 +94,28 @@ $script:Rozmowa = $null
 function ZacznijRozmowe {
     $script:Rozmowa = [System.Collections.ArrayList]::new()
     # Czat dziala tez przed skanem - model wie wtedy, ze nie zna jeszcze plikow komputera
-    $raport = if ($script:Dysk) { RaportJson } else {
+    $raport = if ($script:Dysk) { RaportCzat } else {
         L 'Skan nie został jeszcze wykonany - nie znasz plików tego komputera. Odpowiadaj ogólnie, a przy pytaniach o konkretne pliki, foldery lub plan poproś użytkownika, żeby najpierw kliknął „Skanuj”.' 'No scan has been run yet - you do not know the files on this computer. Answer in general terms; for questions about specific files, folders or the plan, ask the user to click "Scan" first.'
     }
     [void]$script:Rozmowa.Add(@{ role = 'system'; content = "$SysCzat`n`n$(L 'RAPORT I PLAN' 'REPORT AND PLAN'):`n$raport" })
 }
+# Do modelu idzie raport i tylko ostatnie wymiany - dluga rozmowa tez nie moze przepelnic okna kontekstu
+$WymianyCzatu = 6
 function Zapytaj([string]$pytanie) {
     if (-not (ZapewnijModel)) { return $null }
-    if (-not $script:Rozmowa) { ZacznijRozmowe }
+    if (-not $script:Rozmowa) { ZacznijRozmowe; Log "Czat: raport dla modelu $($script:Rozmowa[0].content.Length) znakow" }
     [void]$script:Rozmowa.Add(@{ role = 'user'; content = $pytanie })
+    $wiadomosci = @($script:Rozmowa[0]) + @($script:Rozmowa | Select-Object -Skip 1 | Select-Object -Last (2 * $WymianyCzatu + 1))
     try {
-        $a = Ollama $script:Rozmowa.ToArray()
+        $a = Ollama $wiadomosci
+        if (-not "$a".Trim()) { throw (L 'model zwrócił pustą odpowiedź' 'the model returned an empty answer') }
         [void]$script:Rozmowa.Add(@{ role = 'assistant'; content = $a })
         $a
     }
-    catch { [void]$script:Rozmowa.RemoveAt($script:Rozmowa.Count - 1); Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; $null }
+    catch {
+        [void]$script:Rozmowa.RemoveAt($script:Rozmowa.Count - 1)
+        Log "Czat - blad modelu: $($_.Exception.Message)"
+        Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'
+        $null
+    }
 }

@@ -34,7 +34,7 @@ function PokazOkno {
     # Strony (wszystkie Fill, widoczna jedna) i pasek stanu pod nimi
     $tresc = Kontrolka Panel @{ Dock = 'Fill'; BackColor = $s.Tlo }
     $script:UI.Strony = [ordered]@{ przeglad = (StronaPrzeglad); plan = (StronaPlan); analiza = (StronaAnaliza); autostart = (StronaAutostart)
-        sterowniki = (StronaSterowniki); czat = (StronaCzat); log = (StronaDziennik); czyszczenie = (StronaCzyszczenie)
+        sterowniki = (StronaSterowniki); czat = (StronaCzat); log = (StronaDziennik); ustawienia = (StronaUstawienia); czyszczenie = (StronaCzyszczenie)
     }
     $stan = Kontrolka Panel @{ Dock = 'Bottom'; Height = (Px 30); BackColor = $s.Tlo; Padding = (Marg 32 0 32 10) }
     $st = Etykieta (L 'Gotowy. Wybierz dyski i kliknij „Skanuj” (F5).' 'Ready. Pick the drives and click "Scan" (F5).') @{ Dock = 'Fill'; ForeColor = $s.TekstSlaby; Font = $s.Mala; AutoEllipsis = $true; TextAlign = 'MiddleLeft' }
@@ -47,7 +47,7 @@ function PokazOkno {
     $u = $script:UI
     $script:UI.Akcje = @($u.BtnSkan, $u.BtnStart, $u.BtnDoPlanu, $u.BtnOdRazu, $u.BtnWyczysc, $u.BtnWyjasnij, $u.BtnZalecane, $u.BtnOdznacz,
         $u.BtnAnalizuj, $u.BtnAnalizaAi, $u.BtnWyslij, $u.BtnAkt, $u.BtnAutoOdswiez, $u.BtnAutoAi, $u.BtnWynikSkan,
-        $u.BtnSterSprawdz, $u.BtnSterInstaluj)
+        $u.BtnSterSprawdz, $u.BtnSterInstaluj, $u.BtnUstZapisz, $u.BtnUstRestart)
 
     # ---------- ZDARZENIA ----------
     $u.BtnSkan.Add_Click({ Akcja {
@@ -211,7 +211,7 @@ function PokazOkno {
     $f.Add_Shown({
             CiemnePrzewijanie
             $str = "$($script:Ustawienia.Strona)"
-            PokazStrone $(if ($str -in 'analiza', 'autostart', 'sterowniki', 'czat', 'log') { $str } else { 'przeglad' })
+            PokazStrone $(if ($str -in 'analiza', 'autostart', 'sterowniki', 'czat', 'log', 'ustawienia') { $str } else { 'przeglad' })
             WypelnijPlan
             WypelnijSterowniki
             UstawPrzyciski
@@ -252,4 +252,6 @@ function PokazOkno {
 
     Log "Start (okno). Model: $Model, Podglad: $Podglad, BezLLM: $BezLLM, Jezyk: $Jezyk, Skala: $($script:Skala) (GDI+ $($script:DpiGdiPlus) dpi), Ciemny: $($script:Ciemny)"
     [void]$f.ShowDialog()
+    # "Zapisz i uruchom ponownie" na stronie Ustawienia - nowe okno startuje po zapisaniu okno.json
+    if ($script:Restart) { UruchomPonownie }
 }

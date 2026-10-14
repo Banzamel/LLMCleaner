@@ -8,7 +8,8 @@ function UlozPlan {
     foreach ($k in $script:Kategorie) {
         $k.Wybrana = -not $k.TylkoRecznie -and -not $k.Blokada -and $k.Typ -in 'folder', 'miniatury' -and $k.Bajty -gt 0
     }
-    foreach ($p in $script:Pozostalosci) { $p.Wybrana = $p.Pewnosc -in 'wysoka', 'srednia' }
+    # Bardzo duzy folder (ponad 10 GB) to czesciej zywa gra lub program niz pozostalosc - decyduje uzytkownik
+    foreach ($p in $script:Pozostalosci) { $p.Wybrana = $p.Pewnosc -in 'wysoka', 'srednia' -and [double]$p.Bajty -lt 10GB }
 }
 
 function SumaZablokowanych { [double](@($script:Kategorie | Where-Object { $_.Wybrana } | ForEach-Object { [double]$_.Zablokowane }) | Measure-Object -Sum).Sum }
@@ -48,6 +49,62 @@ function RaportJson {
                 } })
     }
     ConvertTo-Json -InputObject $raport -Depth 10 -Compress
+}
+
+# Raport dla czatu: ten sam co RaportJson, ale przyciety do rozmiaru, ktory maly model przeczyta w calosci.
+# Pelny raport po duzym skanie (kilkaset pozycji) przekraczal okno kontekstu modelu - Ollama ucinala wtedy
+# poczatek rozmowy razem z instrukcja i model nie odpowiadal albo odpowiadal po kilku minutach.
+# Najwieksze pozycje zostaja, reszta jest liczona w podsumowaniu. Limit w znakach (ok. 2,5 znaku na token).
+$LimitRaportuCzatu = 14000
+function Skroc([string]$t, [int]$n) { if (-not $t -or $t.Length -le $n) { return $t }; $t.Substring(0, $n - 1) + '…' }
+function RaportCzat([int]$limit = $LimitRaportuCzatu) {
+    $poz = @($script:Pozostalosci | Where-Object { $_ } | Sort-Object { [double]$_.Bajty } -Descending)
+    $zazn = @($poz | Where-Object { $_.Wybrana })
+    foreach ($n in 60, 40, 25, 15, 8, 4) {
+        $pokazane = @($poz | Select-Object -First $n)
+        $reszta = @($poz | Select-Object -Skip $n)
+        $raport = [ordered]@{
+            podsumowanie        = [ordered]@{
+                zaznaczone_razem          = (Rozmiar (SumaZaznaczonych))
+                pozostalosci_wszystkie    = $poz.Count
+                pozostalosci_zaznaczone   = $zazn.Count
+                pozostalosci_niepokazane = $reszta.Count
+                niepokazane_razem           = (Rozmiar ([double](@($reszta | ForEach-Object { [double]$_.Bajty }) | Measure-Object -Sum).Sum))
+            }
+            dyski               = $script:Dysk.Dyski
+            system              = $script:Dysk.System
+            kategorie           = @($script:Kategorie | Where-Object { $_ } | ForEach-Object {
+                    $k = [ordered]@{ nazwa = $_.Nazwa; rozmiar = (RozmiarKategorii $_); zaznaczona = [bool]$_.Wybrana }
+                    if ($_.TylkoRecznie) { $k.tylko_recznie = $true }
+                    if ($_.Blokada) { $k.blokada = Skroc "$($_.Blokada)" 80 }
+                    $k })
+            pozostalosci        = @($pokazane | ForEach-Object {
+                    $x = [ordered]@{ id = $_.Id; typ = $_.Typ; sciezka = (Skroc (PokazPozostalosc $_) 110); rozmiar = (RozmiarPozostalosci $_)
+                        zaznaczona = [bool]$_.Wybrana; pewnosc = $_.Pewnosc; dlaczego = (Skroc $_.Dlaczego 90)
+                    }
+                    if ($_.Ostatnio) { $x.ostatnia_zmiana = $_.Ostatnio.ToString('yyyy-MM-dd') }
+                    if ($_.Ai) { $x.czym_jest = Skroc $_.Ai 80 }
+                    $x })
+            najwieksze_programy = @($script:Dysk.Programy | Select-Object -First ([Math]::Min($n, 12)))
+            najwieksze_foldery  = @(@($script:Dysk.Profil) + @($script:Dysk.AppData) | Select-Object -First ([Math]::Min($n, 12)))
+            analiza_dyskow      = @($script:Analizy.Values | ForEach-Object {
+                    @{ dysk = "$($_.Litera):"; pozycje = @(@($_.Foldery) + @($_.Pliki) | Sort-Object { [double]$_.Bajty } -Descending |
+                            Select-Object -First ([Math]::Min($n, 15)) | ForEach-Object {
+                                $a = [ordered]@{ sciezka = (Skroc $_.Sciezka 110); rozmiar = (Rozmiar $_.Bajty) }
+                                if ($_.Podpowiedz) { $a.podpowiedz = Skroc $_.Podpowiedz 80 }
+                                if ($_.Ai) { $a.czym_jest = Skroc $_.Ai 80 }
+                                $a })
+                    } })
+            autostart           = @($script:Autostart | Where-Object { $_ } | Select-Object -First ([Math]::Min($n, 30)) | ForEach-Object {
+                    $a = [ordered]@{ nazwa = $_.Nazwa; wlaczony = [bool]$_.Wlaczony }
+                    if ($_.Wydawca) { $a.wydawca = Skroc $_.Wydawca 40 }
+                    if ($_.Ai) { $a.czym_jest = Skroc $_.Ai 60 }
+                    $a })
+        }
+        $json = ConvertTo-Json -InputObject $raport -Depth 8 -Compress
+        if ($json.Length -le $limit) { return $json }
+    }
+    $json
 }
 
 # Podsumowanie przed czyszczeniem: lista linii @{ T = tekst; K = kolor } albo $null, gdy nic nie zaznaczono

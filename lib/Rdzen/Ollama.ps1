@@ -46,8 +46,17 @@ function Ollama($wiadomosci, $format) {
     $json = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $body -Depth 20 -Compress))
     $r = CzekajNa {
         param($url, $json)
-        Invoke-RestMethod $url -Method Post -TimeoutSec 600 -ErrorAction Stop -Body $json -ContentType 'application/json; charset=utf-8'
+        try { Invoke-RestMethod $url -Method Post -TimeoutSec 600 -ErrorAction Stop -Body $json -ContentType 'application/json; charset=utf-8' }
+        catch {
+            # Ollama opisuje blad w tresci odpowiedzi ({"error": "..."}) - bez niej zostaje samo "(500)"
+            $tresc = "$($_.ErrorDetails.Message)"
+            if (-not $tresc) { try { $tresc = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch { $tresc = '' } }
+            if ($tresc) { throw "$($_.Exception.Message) $tresc" }
+            throw
+        }
     } @("$OllamaUrl/api/chat", $json)
+    if ($r.message.content) { return $r.message.content }
+    if ($r.done_reason -and $r.done_reason -ne 'stop') { throw "Ollama: done_reason=$($r.done_reason)" }
     $r.message.content
 }
 

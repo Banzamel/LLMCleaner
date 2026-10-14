@@ -186,5 +186,5 @@ function AnalizaAi($a) {
         $script:Rozmowa = $null
         $n
     }
-    catch { Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
+    catch { Log "Blad modelu: $($_.Exception.Message)"; Wypisz ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
 }

@@ -134,10 +134,12 @@ The pages are in the navigation bar on the left.
    problem in Device Manager are listed below; double-click opens Device Manager.
 6. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
 7. **Log**: everything the program does, also written to the log file.
+8. **Settings**: language, theme (light, dark or as in Windows), the AI assistant on or off, the AI model, the
+   update check at start and *always start in preview mode*. **Save and restart** applies them at once. They are
+   kept in `%LOCALAPPDATA%\LLMCleaner\ustawienia.json`; command-line parameters win over them.
 
-**Ctrl+1** to **Ctrl+7** switch pages. The window follows the Windows light or dark app mode and remembers its size,
-position and last page in `%LOCALAPPDATA%\LLMCleaner\okno.json`. To force a theme, set `"Motyw"` in that file to
-`"jasny"` (light) or `"ciemny"` (dark); `"auto"` follows Windows.
+**Ctrl+1** to **Ctrl+8** switch pages. The window follows the Windows light or dark app mode (unless *Settings*
+says otherwise) and remembers its size, position and last page in `%LOCALAPPDATA%\LLMCleaner\okno.json`.
 
 ### Parameters
 

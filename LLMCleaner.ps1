@@ -39,19 +39,25 @@ param(
     [string]$Sid      # konto, ktore uruchomilo program (ustawia samo podnoszenie uprawnien)
 )
 
-$Wersja = '1.6.2'
+$Wersja = '1.6.3'
 $ErrorActionPreference = 'SilentlyContinue'
 $AppDir = $PSScriptRoot
+
+# Ustawienia ze strony Ustawienia (ustawienia.json); parametry z wiersza polecen maja pierwszenstwo
+. (Join-Path $AppDir 'lib\Rdzen\Konfiguracja.ps1')
+$Konfiguracja = WczytajKonfiguracje
+$PodgladZParametru = [bool]$Podglad   # skrot "podglad" - zostaje tez po ponownym uruchomieniu z Ustawien
+if (-not $Jezyk -and $Konfiguracja.Jezyk -in 'pl', 'en') { $Jezyk = $Konfiguracja.Jezyk }
+if (-not $Model -and $Konfiguracja.Model) { $Model = "$($Konfiguracja.Model)" }
+if ($Konfiguracja.Asystent -eq $false) { $BezLLM = [switch]$true }
+if ($Konfiguracja.Aktualizacje -eq $false) { $BezAktualizacji = [switch]$true }
+if ($Konfiguracja.Podglad -eq $true) { $Podglad = [switch]$true }
 
 # Jezyk interfejsu: polski dla polskiego Windows, w pozostalych przypadkach angielski
 if (-not $Jezyk) { $Jezyk = if ((Get-UICulture).TwoLetterISOLanguageName -eq 'pl') { 'pl' } else { 'en' } }
 
 # Model wybrany w instalatorze (config.json obok skryptu), chyba ze podano -Model
-if (-not $Model) {
-    $cfg = Join-Path $AppDir 'config.json'
-    if (Test-Path -LiteralPath $cfg) { $Model = (Get-Content -LiteralPath $cfg -Raw | ConvertFrom-Json).model }
-    if (-not $Model) { $Model = 'qwen3:4b-instruct' }
-}
+if (-not $Model) { $Model = ModelInstalatora }
 
 # ---------- UPRAWNIENIA ----------
 $adm = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
@@ -85,7 +91,7 @@ $PlikiOkna = @(
     'Okno\Podstawy.ps1', 'Okno\Motyw.ps1', 'Okno\Wyjscie.ps1', 'Okno\Rysowanie.ps1', 'Okno\Kontrolki.ps1', 'Okno\Lista.ps1',
     'Okno\Stan.ps1', 'Okno\Strony\Przeglad.ps1', 'Okno\Strony\Plan.ps1', 'Okno\Strony\Analiza.ps1',
     'Okno\Strony\Autostart.ps1', 'Okno\Strony\Sterowniki.ps1', 'Okno\Strony\Czyszczenie.ps1', 'Okno\Strony\Czat.ps1',
-    'Okno\Strony\Dziennik.ps1', 'Okno\Nawigacja.ps1', 'Okno\Polozenie.ps1', 'Okno\Okno.ps1'
+    'Okno\Strony\Dziennik.ps1', 'Okno\Strony\Ustawienia.ps1', 'Okno\Nawigacja.ps1', 'Okno\Polozenie.ps1', 'Okno\Okno.ps1'
 )
 $PlikiKonsoli = @(
     'Konsola\Wspolne.ps1', 'Konsola\Dyski.ps1', 'Konsola\Plan.ps1', 'Konsola\Czat.ps1', 'Konsola\Analiza.ps1',
