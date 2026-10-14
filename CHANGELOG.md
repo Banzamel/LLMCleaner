@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.2 (2026-10-14)
+
+- No visible changes: the code is reorganised so it is easier to work on. The three large files in `lib` are split
+  into folders with one file per area (`lib\Rdzen`), per window page (`lib\Okno\Strony`) and per text-mode screen
+  (`lib\Konsola`), the C# helpers moved to their own `.cs` files, and all scripts are formatted the same way
+  (PSScriptAnalyzer, `PSScriptAnalyzerSettings.psd1`). The update removes the old `lib\Rdzen.ps1`, `lib\Okno.ps1`
+  and `lib\Konsola.ps1`.
+
 ## 1.6.1 (2026-10-14)
 
 - **Fixed: text cut off and overlapping at display scaling above 100%** (125%, 150%, 4K monitors). The window measured

@@ -79,7 +79,13 @@ Source: "..\LLMCleaner.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Install-AI.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\lib\*.ps1"; DestDir: "{app}\lib"; Flags: ignoreversion
+Source: "..\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[InstallDelete]
+; Before 1.6.2 the code was in three files; the update replaces them with the lib\Rdzen, lib\Okno and lib\Konsola folders
+Type: files; Name: "{app}\lib\Rdzen.ps1"
+Type: files; Name: "{app}\lib\Okno.ps1"
+Type: files; Name: "{app}\lib\Konsola.ps1"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
