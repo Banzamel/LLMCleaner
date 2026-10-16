@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.4 (2026-10-16)
+
+- No visible changes: the code is now fully in English. Folders, files, functions, variables and comments have
+  English names (`lib\Core`, `lib\Gui` with `lib\Gui\Pages`, `lib\Console`), and no file is longer than 300 lines.
+  The interface text is unchanged and still in Polish and English.
+- Command-line parameters have English names: `-Console`, `-Preview`, `-NoAI`, `-Drives`, `-Language`,
+  `-NoUpdateCheck`. The Polish names (`-Konsola`, `-Podglad`, `-BezLLM`, `-Dyski`, `-Jezyk`, `-BezAktualizacji`)
+  still work.
+- Settings and the window position are now kept in `settings.json` and `window.json`. Values saved by an older
+  version (`ustawienia.json`, `okno.json`) are read once and carried over.
+- The update removes the old `lib\Rdzen`, `lib\Okno` and `lib\Konsola` folders.
+
 ## 1.6.3 (2026-10-14)
 
 - **Fixed: whole folders such as `G:\Steam`, `P:\Git` or `G:\$RECYCLE.BIN` were ticked as Epic game leftovers.**
