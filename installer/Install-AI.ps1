@@ -21,8 +21,8 @@ $ProgressPreference = 'SilentlyContinue'   # w PS 5.1 pasek postepu wielokrotnie
 # Paczka zalezna od procesora: ARM64 (np. Snapdragon) albo x64; dla kart AMD dochodza biblioteki ROCm
 $Url = 'https://github.com/ollama/ollama/releases/latest/download'
 $Arm = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64'
-$Paczki = @(if ($Arm) { 'ollama-windows-arm64.zip' } else { 'ollama-windows-amd64.zip' })
-if (-not $Arm -and (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'AMD|Radeon' })) { $Paczki += 'ollama-windows-amd64-rocm.zip' }
+$Packages = @(if ($Arm) { 'ollama-windows-arm64.zip' } else { 'ollama-windows-amd64.zip' })
+if (-not $Arm -and (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'AMD|Radeon' })) { $Packages += 'ollama-windows-amd64-rocm.zip' }
 $Port = '127.0.0.1:11435'                  # ten sam co w LLMCleaner.ps1
 
 $T = @{
@@ -48,7 +48,7 @@ $OllamaDir = Join-Path $AiDir 'ollama'
 $ModelsDir = Join-Path $AiDir 'models'
 $Exe = Join-Path $OllamaDir 'ollama.exe'
 $zip = Join-Path $AiDir 'ollama-download.zip'
-$serwer = $null
+$server = $null
 
 try {
     New-Item -ItemType Directory -Force $OllamaDir, $ModelsDir | Out-Null
@@ -58,7 +58,7 @@ try {
         Write-Host "  $($T.Have)" -ForegroundColor Gray
     }
     else {
-        foreach ($p in $Paczki) {
+        foreach ($p in $Packages) {
             Write-Host "  $($T.Down) [$p]" -ForegroundColor Gray
             # curl.exe (wbudowany w Windows 10 1803+) pokazuje postep; inaczej Invoke-WebRequest
             $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
@@ -89,7 +89,7 @@ try {
     $psi.EnvironmentVariables['OLLAMA_HOST'] = $Port
     $psi.EnvironmentVariables['OLLAMA_MODELS'] = $ModelsDir
     $psi.EnvironmentVariables['USERPROFILE'] = $AiDir
-    $serwer = [Diagnostics.Process]::Start($psi)
+    $server = [Diagnostics.Process]::Start($psi)
     $ok = $false
     for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
         Start-Sleep -Milliseconds 500
@@ -118,6 +118,6 @@ catch {
 }
 finally {
     # Serwer byl potrzebny tylko do pobrania modelu; LLMCleaner uruchamia go sam, na zadanie
-    if ($serwer -and -not $serwer.HasExited) { $serwer.Kill(); $serwer.WaitForExit(5000) | Out-Null }
+    if ($server -and -not $server.HasExited) { $server.Kill(); $server.WaitForExit(5000) | Out-Null }
     Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
 }
