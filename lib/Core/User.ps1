@@ -1,9 +1,9 @@
 ﻿<#
-    LLMCleaner - konto uzytkownika, ktorego profil jest sprzatany (takze gdy UAC podal haslo innego konta)
+    LLMCleaner - the user account whose profile is cleaned (also when UAC got another account's password)
 #>
 
-# Na koncie standardowym UAC prosi o haslo innego konta (administratora) i skrypt dziala wtedy
-# jako ono. Sprzatamy jednak profil osoby, ktora program uruchomila: jej foldery, rejestr i Kosz.
+# On a standard account UAC asks for another (administrator) account's password and the script then
+# runs as that account. We still clean the profile of the person who started the program: their folders, registry and Recycle Bin.
 $mySid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $OtherUser = $false
 if ($Sid -and $Sid -ne $mySid) {
@@ -17,7 +17,7 @@ $UserSid = if ($OtherUser) { $Sid } else { $mySid }
 $HKCUName = if ($OtherUser) { "HKEY_USERS\$Sid" } else { 'HKEY_CURRENT_USER' }
 $HKCU = "Registry::$HKCUName"
 
-# Folder powloki uzytkownika (moze byc przeniesiony, np. Dokumenty do OneDrive albo Pobrane na D:)
+# User shell folder (may be relocated, e.g. Documents to OneDrive or Downloads to D:)
 function Get-UserShellFolder([string]$name, [string]$fallback) {
     $v = (Get-ItemProperty "$HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders").$name
     if ($v) {

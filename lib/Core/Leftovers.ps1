@@ -1,13 +1,13 @@
 ﻿<#
-    LLMCleaner - pozostalosci po odinstalowanych programach i grach (foldery, pliki, rejestr, Steam, Epic)
+    LLMCleaner - leftovers of uninstalled programs and games (folders, files, registry, Steam, Epic)
 #>
 
 function Get-ConfidenceName([string]$p) {
     switch ($p) { 'high' { L 'wysoka' 'high' } 'medium' { L 'średnia' 'medium' } 'low' { L 'niska' 'low' } default { $p } }
 }
 
-# Pozostalosci: foldery i pliki ida do Kosza; klucze i wartosci rejestru oraz zadania Harmonogramu
-# maja kopie (.reg / .xml) i punkt przywracania
+# Leftovers: folders and files go to the Recycle Bin; registry keys/values and Task Scheduler tasks
+# get a backup (.reg / .xml) and a restore point
 function Test-GoesToRecycleBin($p) { $p.Type -in 'folder', 'file' }
 function Format-LeftoverSize($p) {
     switch ($p.Type) { 'registry' { L 'rejestr' 'registry' } 'regvalue' { L 'rejestr' 'registry' } 'task' { L 'zadanie' 'task' } default { Format-Size $p.Bytes } }
@@ -18,16 +18,16 @@ function Format-Leftover($p) {
     $p.Path
 }
 
-# Wykrywanie jest ostrozne: folder trafia na liste tylko wtedy, gdy nie pasuje do ZADNEGO
-# zainstalowanego programu, aplikacji ze Sklepu, uslugi, procesu ani skrotu w menu Start.
-# Foldery ida do Kosza, klucze rejestru sa przed usunieciem eksportowane do .reg.
+# Detection is cautious: a folder is listed only if it matches NO installed program,
+# Store app, service, process or Start menu shortcut.
+# Folders go to the Recycle Bin, registry keys are exported to .reg before deletion.
 $CommonWords = @('app', 'apps', 'data', 'studio', 'software', 'soft', 'games', 'game', 'the', 'inc', 'ltd', 'llc',
     'gmbh', 'corp', 'corporation', 'company', 'technologies', 'technology', 'systems', 'group', 'limited', 'edition',
     'launcher', 'client', 'free', 'pro', 'update', 'updater', 'helper', 'service', 'services', 'tools', 'tool',
     'common', 'files', 'program', 'programs', 'user', 'local', 'roaming', 'cache', 'x64', 'x86', 'win', 'windows',
     'desktop', 'setup', 'install', 'installer', 'version', 'sro', 'foundation', 'entertainment', 'interactive', 'digital')
 
-# Foldery i klucze systemowe, sterowniki oraz narzedzia, ktorych nigdy nie proponujemy
+# System folders and keys, drivers and tools we never suggest
 $SkippedNames = @('microsoft*', 'windows*', 'packages', 'temp', 'tmp', 'programs', 'package cache', 'common files',
     'installshield*', 'd3dscache', 'crashdumps', 'connecteddevicesplatform', 'peerdistrepub', 'placeholdertilelogofolder',
     'comms', 'publishers', 'virtualstore', 'isolatedstorage', 'elevateddiagnostics', 'squirreltemp', 'history',
@@ -49,7 +49,7 @@ function Get-NameTokens([string]$t) {
 function ConvertTo-PlainName([string]$t) { ($t.ToLower() -replace '[^a-z0-9]', '') }
 function Test-SkippedName([string]$name) { $n = $name.ToLower(); foreach ($w in $SkippedNames) { if ($n -like $w) { return $true } }; $false }
 
-# Sciezka pliku z polecenia typu '"C:\X\unins.exe" /S' albo 'C:\X\app.exe,0'
+# File path from a command like '"C:\X\unins.exe" /S' or 'C:\X\app.exe,0'
 function Get-CommandPath([string]$s) {
     if (-not $s) { return $null }
     $s = [Environment]::ExpandEnvironmentVariables($s.Trim())
@@ -70,8 +70,8 @@ function Get-UninstallKeys {
     }
 }
 
-# Martwe wpisy na liscie programow: deinstalator i folder instalacji nie istnieja.
-# Wpisy MSI pomijamy - ich usuniecie rozspojniloby baze Instalatora Windows.
+# Dead entries in the program list: the uninstaller and install folder don't exist.
+# MSI entries are skipped - removing them would make the Windows Installer database inconsistent.
 function Find-DeadUninstallEntries($entries) {
     foreach ($w in $entries) {
         try {
@@ -87,7 +87,7 @@ function Find-DeadUninstallEntries($entries) {
                     else { L 'Martwy wpis na liście programów: deinstalator nie istnieje.' 'Dead entry in the program list: the uninstaller is gone.' })
             }
         }
-        catch { Add-ScanError "wpis $($w.RegKey)" $_ }
+        catch { Add-ScanError "entry $($w.RegKey)" $_ }
     }
 }
 
@@ -112,17 +112,17 @@ function Get-InstalledPrograms($entries) {
     foreach ($a in $appx) { Add-Entry $a.Name; Add-PathEntry $a.InstallLocation }
     foreach ($g in Get-SteamGames) { Add-Entry $g }
     foreach ($p in Get-Process) {
-        if ($p.Path) { try { Add-PathEntry $p.Path; Add-Entry ([IO.Path]::GetFileNameWithoutExtension($p.Path)) } catch { Add-ScanError "proces $($p.Path)" $_ } }
+        if ($p.Path) { try { Add-PathEntry $p.Path; Add-Entry ([IO.Path]::GetFileNameWithoutExtension($p.Path)) } catch { Add-ScanError "process $($p.Path)" $_ } }
     }
     foreach ($s in Get-CimInstance Win32_Service) { Add-PathEntry (Get-CommandPath $s.PathName) }
-    # Skroty w menu Start i na pulpicie - lapia programy przenosne bez wpisu w rejestrze
+    # Start menu and desktop shortcuts - catch portable programs with no registry entry
     $sh = New-Object -ComObject WScript.Shell
     foreach ($d in "$env:APPDATA\Microsoft\Windows\Start Menu", "$env:ProgramData\Microsoft\Windows\Start Menu",
                    (Get-UserShellFolder 'Desktop' "$env:USERPROFILE\Desktop"), "$env:PUBLIC\Desktop") {
         foreach ($l in Get-ChildItem -LiteralPath $d -Recurse -Filter *.lnk -Force) {
             Add-Entry $l.BaseName
             try { $t = $sh.CreateShortcut($l.FullName).TargetPath; if ($t) { Add-PathEntry $t } }
-            catch { Add-ScanError "skrot $($l.FullName)" $_ }
+            catch { Add-ScanError "shortcut $($l.FullName)" $_ }
         }
     }
     @{ Tokens = $tokens; Names = $names; Paths = $paths }
@@ -146,8 +146,8 @@ function Measure-Folder($p) {
         if (-not $exe -and $f.Extension -eq '.exe') { $exe = $true }
     }
     if ($latest -eq [datetime]::MinValue) {
-        # Folder pusty albo nieczytelny. Gdy nie da sie odczytac nawet jego daty, traktujemy go jak
-        # swiezy - nieznany folder nie moze trafic do planu jako stary
+        # Empty or unreadable folder. If even its date can't be read, treat it as
+        # recent - an unknown folder must not enter the plan as old
         $latest = (Get-Item -LiteralPath $p -Force).LastWriteTime
         if ($latest -isnot [datetime]) { $latest = Get-Date }
     }

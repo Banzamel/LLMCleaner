@@ -88,16 +88,20 @@ Source: "..\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs cr
 Type: files; Name: "{app}\lib\Rdzen.ps1"
 Type: files; Name: "{app}\lib\Okno.ps1"
 Type: files; Name: "{app}\lib\Konsola.ps1"
+; 1.6.4 renamed the folders to lib\Core, lib\Gui and lib\Console; remove the old ones
+Type: filesandordirs; Name: "{app}\lib\Rdzen"
+Type: filesandordirs; Name: "{app}\lib\Okno"
+Type: filesandordirs; Name: "{app}\lib\Konsola"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"""; \
   WorkingDir: "{app}"; IconFilename: "{app}\LLMCleaner.ico"
 Name: "{group}\{#AppName} ({cm:ShortPreview})"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"" -Podglad"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"" -Preview"; \
   WorkingDir: "{app}"; IconFilename: "{app}\LLMCleaner.ico"
 Name: "{group}\{#AppName} ({cm:ShortConsole})"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\LLMCleaner.ps1"" -Konsola"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\LLMCleaner.ps1"" -Console"; \
   WorkingDir: "{app}"; IconFilename: "{app}\LLMCleaner.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
@@ -113,7 +117,7 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"""; \
   WorkingDir: "{app}"; Description: "{cm:Launch}"; Flags: postinstall nowait skipifsilent
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"" -Podglad"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\LLMCleaner.ps1"" -Preview"; \
   WorkingDir: "{app}"; Description: "{cm:LaunchPreview}"; Flags: postinstall nowait skipifsilent unchecked
 Filename: "{#AppURL}#readme"; Description: "{cm:Docs}"; Flags: postinstall shellexec nowait skipifsilent unchecked
 

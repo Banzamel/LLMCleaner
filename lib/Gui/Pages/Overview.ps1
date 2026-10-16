@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - strona Przeglad
+    LLMCleaner - overview page
 #>
 
 function Update-Overview {
@@ -34,7 +34,7 @@ function Update-Overview {
     $u.Stats.Visible = $true
     $u.Stats.Invalidate()
 
-    # Slupki: najwieksze kategorie, pozostalosci razem, reszta razem
+    # Bars: largest categories, leftovers combined, the rest combined
     $el = @($script:Categories | Where-Object { $_.Bytes -gt 0 } | ForEach-Object { @{ Name = $_.Name; Bytes = [double]$_.Bytes; Selected = [bool]$_.Selected } })
     $leftoverList = @($script:Leftovers | Where-Object { Test-GoesToRecycleBin $_ })
     if ($leftoverList.Count) {
@@ -135,7 +135,7 @@ function New-OverviewPage {
     $n = New-PageHeader (L 'Przegląd' 'Overview') (L 'Wybierz dyski i kliknij „Skanuj”. LLMCleaner sprawdzi śmieci systemowe, cache programów i pozostałości po odinstalowanych programach i grach.' 'Pick the drives and click "Scan". LLMCleaner checks system junk, app caches and leftovers of uninstalled programs and games.') @($btnScan)
     $script:UI.OverviewDesc = $n.Description
 
-    # Karta wyniku: maly napis, duza liczba, opis, przyciski i kafelki statystyk po prawej
+    # Result card: small caption, big number, description, buttons and stat tiles on the right
     $k = New-Card @{ Dock = 'Top'; Height = (Px 230); Padding = (New-Padding 28 22 28 22) }
     $stats = New-Canvas @{ Dock = 'Right'; Width = (Px 420); BackColor = $s.Card; Visible = $false } { param($g, $p) Draw-Stats $g $p }
     $left = New-Control Panel @{ Dock = 'Fill'; BackColor = $s.Card }
@@ -151,12 +151,12 @@ function New-OverviewPage {
     Add-Docked $row @($btnStart, $btnPlan, (New-Spacer 'Left' 10), $btnCleanNow)
     Add-Docked $left @($small, $result, $stage, (New-Spacer 'Top' 8), $row)
     Add-Docked $k @($stats, (New-Spacer 'Right' 24), $left)
-    # Waskie okno: kafelki statystyk ustepuja miejsca przyciskom
+    # Narrow window: stat tiles give way to the buttons
     $k.Add_Resize({ if ($script:UI.Stats) { $script:UI.Stats.Width = [Math]::Max((Px 220), [Math]::Min((Px 420), $this.Width - $this.Padding.Horizontal - (Px 424))) } })
     $script:UI.ResultSmall = $small; $script:UI.Result = $result; $script:UI.Stage = $stage; $script:UI.Stats = $stats
     $script:UI.BtnScan = $btnScan; $script:UI.BtnStart = $btnStart; $script:UI.BtnToPlan = $btnPlan; $script:UI.BtnCleanNow = $btnCleanNow
 
-    # Dol: slupki po lewej, dyski i autostart po prawej (40% szerokosci)
+    # Bottom: bars on the left, disks and startup on the right (40% width)
     $bottom = New-Control Panel @{ Dock = 'Fill' }
     $cardBars = New-Card @{ Dock = 'Fill'; Padding = (New-Padding 24 20 24 16) }
     $bars = New-Canvas @{ Dock = 'Fill'; BackColor = $s.Card } { param($g, $p) Draw-Bars $g $p }

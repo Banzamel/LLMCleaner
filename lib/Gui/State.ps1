@@ -1,8 +1,8 @@
 ﻿<#
-    LLMCleaner - stan okna: zajetosc, przyciski, akcje, przelaczanie stron
+    LLMCleaner - window state: busy state, buttons, actions, page switching
 #>
 
-# Blokuje przyciski na czas pracy i pokazuje pasek postepu
+# Disables buttons while working and shows the progress bar
 function Set-Busy([bool]$z) {
     $script:Working = $z
     foreach ($b in $script:UI.ActionButtons) { if ($b) { $b.Enabled = -not $z } }
@@ -13,7 +13,7 @@ function Set-Busy([bool]$z) {
     [Windows.Forms.Application]::DoEvents()
 }
 
-# Przycisk wlaczony tylko wtedy, gdy ma sens (po skanie, z AI, bez trybu podgladu)
+# Button enabled only when it makes sense (after a scan, with AI, not in preview mode)
 function Update-Buttons {
     $u = $script:UI
     $ai = -not $NoAI
@@ -35,12 +35,12 @@ function Update-Buttons {
     $u.BtnCleanNow.Visible = $u.BtnToPlan.Visible
 }
 
-# Akcja przycisku: blokada okna, obsluga bledow
+# Button action: window lock, error handling
 function Invoke-UiAction([scriptblock]$sb) {
     Set-Busy $true
     try { & $sb }
     catch {
-        Write-Log "Blad okna: $($_.Exception.Message) $($_.ScriptStackTrace)"
+        Write-Log "Window error: $($_.Exception.Message) $($_.ScriptStackTrace)"
         Show-Message ((L 'Wystąpił błąd: {0}' 'An error occurred: {0}') -f $_.Exception.Message) 'Error'
     }
     finally { Set-Busy $false }
@@ -53,11 +53,11 @@ function Show-Page([string]$id) {
     foreach ($k in $script:UI.Nav.Keys) { $script:UI.Nav[$k].Tag.Selected = ($k -eq $id); $script:UI.Nav[$k].Invalidate() }
     $script:UI.Pages[$id].BringToFront()
     if ($id -eq 'chat') { $script:UI.Question.Focus() }
-    # Lista autostartu wczytuje sie przy pierwszym wejsciu na strone (kilka sekund, bez skanu dyskow)
+    # The startup list loads on the first visit to the page (a few seconds, no disk scan)
     if ($id -eq 'startup' -and $null -eq $script:Startup -and -not $script:UI.Scanning) { $script:UI.BtnStartupRefresh.PerformClick() }
 }
 
-# Na czas czyszczenia pasek nawigacji pokazuje tylko informacje
+# During cleanup the navigation bar only shows information
 function Lock-Navigation([bool]$z) {
     $script:Cleaning = $z
     $script:UI.NavList.Visible = -not $z

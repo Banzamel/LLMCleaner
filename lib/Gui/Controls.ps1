@@ -1,9 +1,9 @@
 ﻿<#
-    LLMCleaner - budowa kontrolek: karty, plotna, etykiety, naglowki stron
+    LLMCleaner - control builders: cards, canvases, labels, page headers
 #>
 
-# Anchor i Dock na koncu: kotwica zapamietuje odleglosci od krawedzi rodzica w chwili ustawienia,
-# wiec rozmiar i polozenie musza byc juz znane (kolejnosc kluczy w hashtable jest przypadkowa)
+# Anchor and Dock go last: an anchor stores the distances to the parent's edges when it is set,
+# so size and location must already be known (hashtable key order is random)
 function New-Control([string]$type, [hashtable]$props) {
     $c = New-Object "Windows.Forms.$type"
     foreach ($k in $props.Keys) { if ($k -notin 'Anchor', 'Dock') { $c.$k = $props[$k] } }
@@ -11,7 +11,7 @@ function New-Control([string]$type, [hashtable]$props) {
     $c
 }
 
-# Klatka ikony jako obrazek. LLMCleaner.ico ma klatki PNG, ktorych Icon.ToBitmap() w .NET Framework nie umie.
+# Icon frame as an image. LLMCleaner.ico has PNG frames, which Icon.ToBitmap() in .NET Framework can't handle.
 function Get-IconImage([string]$file, [int]$size) {
     $b = [IO.File]::ReadAllBytes($file)
     $best = $null
@@ -27,13 +27,13 @@ function Get-IconImage([string]$file, [int]$size) {
     try { New-Object Drawing.Bitmap($ms) } catch { (New-Object Drawing.Icon($file, $size, $size)).ToBitmap() }
 }
 
-# DoubleBuffered jest chronione - bez niego wlasne rysowanie migocze przy zmianie rozmiaru
+# DoubleBuffered is protected - without it custom drawing flickers on resize
 function Enable-DoubleBuffer($c) {
     [Windows.Forms.Control].GetProperty('DoubleBuffered', [Reflection.BindingFlags]'NonPublic, Instance').SetValue($c, $true, $null)
 }
 
-# Karta: panel z zaokraglonymi rogami. Rogi maluje kolorem rodzica, wnetrze swoim BackColor.
-# Bez ramki - karta odcina sie od tla samym kolorem. -Ramka dodaje cienka ramke.
+# Card: panel with rounded corners. Corners are painted in the parent's color, the inside in its own BackColor.
+# No border - the card stands out by color alone. -Border adds a thin border.
 function New-Card([hashtable]$w = @{}, [switch]$Border) {
     $k = New-Control Panel $w
     if (-not $w.ContainsKey('BackColor')) { $k.BackColor = $script:Style.Card }
@@ -49,7 +49,7 @@ function New-Card([hashtable]$w = @{}, [switch]$Border) {
     $k
 }
 
-# Panel rysowany w calosci przez podany blok (Paint dostaje Graphics i panel)
+# Panel drawn entirely by the given block (Paint gets Graphics and the panel)
 function New-Canvas([hashtable]$w, [scriptblock]$draw) {
     $p = New-Control Panel $w
     Enable-DoubleBuffer $p
@@ -59,8 +59,8 @@ function New-Canvas([hashtable]$w, [scriptblock]$draw) {
     $p
 }
 
-# Przycisk rysowany od zera. Style: glowny (niebieski), zielony, drugi (jasnoniebieski), ramka (bialy z ramka),
-# link (sam tekst), nav (pasek po lewej).
+# Owner-drawn button. Styles: primary (blue), green, secondary (light blue), outline (white with border),
+# link (text only), nav (left bar).
 function New-Button([string]$text, [string]$style = 'primary', [hashtable]$w = @{}) {
     $b = New-Control Button $w
     $b.Text = $text
@@ -81,8 +81,8 @@ function New-Button([string]$text, [string]$style = 'primary', [hashtable]$w = @
     $b
 }
 
-# Dodaje kontrolki zadokowane - lista od zewnetrznej (pierwsza = najwyzej/najnizej przy krawedzi), Fill na koncu.
-# WinForms dokuje od konca kolekcji, wiec dodajemy w odwrotnej kolejnosci.
+# Adds docked controls - list from the outermost (first = closest to the edge), Fill last.
+# WinForms docks from the end of the collection, so they are added in reverse order.
 function Add-Docked($parentDir, [object[]]$list) {
     [array]::Reverse($list)
     foreach ($c in $list) { $parentDir.Controls.Add($c) }
@@ -96,7 +96,7 @@ function New-Label([string]$text, [hashtable]$w = @{}) {
     if (-not $w.ContainsKey('Font')) { $l.Font = $script:Style.Body }
     if (-not $w.ContainsKey('ForeColor')) { $l.ForeColor = $script:Style.Text }
     if (-not $w.ContainsKey('AutoSize') -and -not $w.ContainsKey('Dock')) { $l.AutoSize = $true }
-    # Etykieta zadokowana u gory lub u dolu zawsze miesci swoj tekst (inna czcionka systemowa, inne DPI)
+    # A label docked top or bottom always fits its text (different system font, different DPI)
     if ($w.ContainsKey('Height') -and "$($l.Dock)" -in 'Top', 'Bottom') {
         $sample = if ($text) { $text } else { 'Ąg' }
         $min = [Windows.Forms.TextRenderer]::MeasureText($sample, $l.Font).Height + $l.Padding.Vertical
@@ -105,7 +105,7 @@ function New-Label([string]$text, [hashtable]$w = @{}) {
     $l
 }
 
-# Naglowek strony: tytul, opis pod nim i przyciski po prawej (w kolejnosci od lewej)
+# Page header: title, description below it and buttons on the right (in left-to-right order)
 function New-PageHeader([string]$title, [string]$desc, [object[]]$buttons = @()) {
     $n = New-Control Panel @{ Dock = 'Top'; Height = (Px 84) }
     $leftPart = New-Control Panel @{ Dock = 'Fill' }

@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - strona Sterowniki
+    LLMCleaner - drivers page
 #>
 
 function Get-DriverStateColors([string]$state) {
@@ -14,7 +14,7 @@ function Get-DriverStateColors([string]$state) {
     @{ T = $s.ErrorBack; K = $s.ErrorText }
 }
 
-# Sterownik mozna zaznaczyc, dopoki nie jest zainstalowany (blad mozna ponowic)
+# A driver can be selected until it is installed (a failure can be retried)
 function Test-DriverSelectable($d) { -not $Preview -and -not $script:Working -and $d.State -in 'new', 'fail' }
 
 function Draw-DriverRow($g, $w, $r, [bool]$hover) {
@@ -24,7 +24,7 @@ function Draw-DriverRow($g, $w, $r, [bool]$hover) {
     $mid = $r.Y + [int]($r.Height / 2)
     $xName = Px 64
     if ($w.Problem) {
-        # Urzadzenie z bledem w Menedzerze urzadzen - tylko do wgladu
+        # Device with an error in Device Manager - view only
         Draw-Rect $g (Px 20) ($mid - (Px 16)) (Px 32) (Px 32) $s.WarnBack (Px 8)
         if ($s.Icons) { Draw-Text $g ([string][char]0xE7BA) $s.Icons $s.WarnText (Px 20) ($mid - (Px 16)) (Px 32) (Px 32) 'HorizontalCenter' }
         else { Draw-Text $g '!' $s.Bold $s.WarnText (Px 20) ($mid - (Px 16)) (Px 32) (Px 32) 'HorizontalCenter' }
@@ -102,8 +102,8 @@ function Update-DriverTotal {
     if (-not $script:Working) { Update-Buttons }
 }
 
-# Instalacja zaznaczonych: punkt przywracania, potem po kolei pobranie i instalacja. Stan wierszy
-# odswieza zegar okna, bo instalacja idzie w osobnym watku.
+# Install selected: restore point, then download and install one by one. Row state is
+# refreshed by the window timer, because installation runs in a separate thread.
 function Install-DriversFromWindow($chosen) {
     $u = $script:UI
     $script:InstallingDrivers = $true
@@ -112,7 +112,7 @@ function Install-DriversFromWindow($chosen) {
         $u.LvDrivers.Invalidate()
         Set-WindowStatus (L 'Tworzę punkt przywracania systemu...' 'Creating a System Restore point...')
         $restore = New-RestorePoint
-        Write-Log "Punkt przywracania (sterowniki): $($restore.Description)"
+        Write-Log "Restore point (drivers): $($restore.Description)"
         Write-WindowLog ((L '  Punkt przywracania: {0}' '  Restore point: {0}') -f $restore.Description) $(if ($restore.Ok) { 'Green' } else { 'Yellow' })
         Set-WindowStatus (L 'Instaluję sterowniki z Windows Update. Nie wyłączaj komputera...' 'Installing drivers from Windows Update. Do not turn off the computer...')
         Set-TaskbarProgress 1

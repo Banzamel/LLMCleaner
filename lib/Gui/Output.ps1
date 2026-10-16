@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - wyjscie rdzenia (Wypisz, Postep) pokazywane w oknie
+    LLMCleaner - core output (Write-Line, Write-Status) shown in the window
 #>
 
 function Write-WindowLog([string]$t, [string]$color) {

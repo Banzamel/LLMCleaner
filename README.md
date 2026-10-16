@@ -8,11 +8,11 @@
 programs and games, shows you a plan with exact sizes, and cleans only after you confirm. An optional local AI model
 explains what the leftovers were and answers your questions. The AI engine ([Ollama](https://ollama.com)) is bundled
 in the program folder, so everything runs on your machine. The only network requests are an optional update check
-against GitHub Releases (disable it with `-BezAktualizacji`) and the driver check on Windows Update, which runs only
+against GitHub Releases (disable it with `-NoUpdateCheck`) and the driver check on Windows Update, which runs only
 when you click **Check** on the *Drivers* page.
 
-> LLMCleaner has a **window** (default) and a **text mode** (`-Konsola`). The interface is in **English or Polish**,
-> chosen from the Windows display language (`-Jezyk en` / `-Jezyk pl` to override).
+> LLMCleaner has a **window** (default) and a **text mode** (`-Console`). The interface is in **English or Polish**,
+> chosen from the Windows display language (`-Language en` / `-Language pl` to override).
 
 ---
 
@@ -136,22 +136,22 @@ The pages are in the navigation bar on the left.
 7. **Log**: everything the program does, also written to the log file.
 8. **Settings**: language, theme (light, dark or as in Windows), the AI assistant on or off, the AI model, the
    update check at start and *always start in preview mode*. **Save and restart** applies them at once. They are
-   kept in `%LOCALAPPDATA%\LLMCleaner\ustawienia.json`; command-line parameters win over them.
+   kept in `%LOCALAPPDATA%\LLMCleaner\settings.json`; command-line parameters win over them.
 
 **Ctrl+1** to **Ctrl+8** switch pages. The window follows the Windows light or dark app mode (unless *Settings*
-says otherwise) and remembers its size, position and last page in `%LOCALAPPDATA%\LLMCleaner\okno.json`.
+says otherwise) and remembers its size, position and last page in `%LOCALAPPDATA%\LLMCleaner\window.json`.
 
 ### Parameters
 
 ```
 LLMCleaner.bat                     the window
-LLMCleaner.bat -Konsola            text mode (alias -Console)
-LLMCleaner.bat -Podglad            preview: scan and plan only, nothing is deleted (alias -Preview)
-LLMCleaner.bat -BezLLM             without the AI assistant (alias -NoAI)
+LLMCleaner.bat -Console            text mode (alias -Konsola)
+LLMCleaner.bat -Preview            preview: scan and plan only, nothing is deleted (alias -Podglad)
+LLMCleaner.bat -NoAI               without the AI assistant (alias -BezLLM)
 LLMCleaner.bat -Model qwen3:8b     another model
-LLMCleaner.bat -Dyski C,P          pre-select these drives (alias -Drives)
-LLMCleaner.bat -Jezyk en           interface language: en or pl (alias -Language)
-LLMCleaner.bat -BezAktualizacji    no update check at start (alias -NoUpdateCheck)
+LLMCleaner.bat -Drives C,P         pre-select these drives (alias -Dyski)
+LLMCleaner.bat -Language en        interface language: en or pl (alias -Jezyk)
+LLMCleaner.bat -NoUpdateCheck      no update check at start (alias -BezAktualizacji)
 ```
 
 ### Drives
@@ -189,17 +189,17 @@ The first screen asks which drives to scan: `Enter` continues, numbers toggle dr
 A folder is **not** treated as a leftover when its name or path matches an installed program, a Microsoft Store app,
 a service, a running process, a Start menu or desktop shortcut, or an installed Steam game. It is also skipped when it
 was modified in the last 30 days or is on the built-in list of system and driver folders
-(`$PomijaneNazwy` in `lib\Rdzen\Pozostalosci.ps1`).
+(`$SkippedNames` in `lib\Core\Leftovers.ps1`).
 
 ## Files and logs
 
 | Path | Contents |
 |---|---|
-| install folder | `LLMCleaner.ps1` (start), `lib\Rdzen\` (scanning, plan, AI, cleaning), `lib\Okno\` (window), `lib\Konsola\` (text mode), `LLMCleaner.bat`, `Install-AI.ps1`, `config.json` (the model chosen in the installer) |
+| install folder | `LLMCleaner.ps1` (start), `lib\Core\` (scanning, plan, AI, cleaning), `lib\Gui\` (window), `lib\Console\` (text mode), `LLMCleaner.bat`, `Install-AI.ps1`, `config.json` (the model chosen in the installer) |
 | `<install folder>\ai\ollama\` | the bundled Ollama engine |
 | `<install folder>\ai\models\` | AI models |
 | `%LOCALAPPDATA%\LLMCleaner\logs\` | one log per run: scan report, chosen plan, results, everything moved to the Recycle Bin |
-| `%LOCALAPPDATA%\LLMCleaner\okno.json` | window size, position, last page and theme |
+| `%LOCALAPPDATA%\LLMCleaner\window.json` | window size, position, last page and theme |
 | `%LOCALAPPDATA%\LLMCleaner\logs\kopie_rejestru\` | `.reg` backups of deleted registry keys and values, `.xml` backups of deleted Task Scheduler tasks |
 
 Logs and registry backups are kept after you uninstall the program.
@@ -243,19 +243,20 @@ about game studios, the model also invented titles. That is why:
 | Folder | Contents |
 |---|---|
 | `LLMCleaner.ps1` | start: parameters, administrator rights, the list of files to load |
-| `lib\Rdzen\` | the core without any interface: user, categories, scanners, leftovers, startup apps, plan, Ollama and the AI assistant, disk analysis, updates, drivers, cleaning |
-| `lib\Okno\` | the window: theme, drawing, controls, lists, state, navigation; one file per page in `lib\Okno\Strony\` |
-| `lib\Konsola\` | text mode (`-Konsola`), one file per screen |
+| `lib\Core\` | the core without any interface: user, categories, scanners, leftovers, startup apps, plan, Ollama and the AI assistant, disk analysis, updates, drivers, cleaning |
+| `lib\Gui\` | the window: theme, drawing, controls, lists, state, navigation; one file per page in `lib\Gui\Pages\` |
+| `lib\Console\` | text mode (`-Console`), one file per screen |
 | `lib\*\cs\` | C# helpers compiled with `Add-Type` (file locks, the Ollama job object, the fast disk scanner, Windows APIs for the window) |
 
-The files are dot-sourced by `LLMCleaner.ps1` in a fixed order (`$PlikiRdzenia`, `$PlikiOkna`, `$PlikiKonsoli`) and share
-its variables, so a new file has to be added to that list and to nothing else. The code is formatted with
+The files are dot-sourced by `LLMCleaner.ps1` in a fixed order (`$CoreFiles`, `$GuiFiles`, `$ConsoleFiles`) and share
+its variables, so a new file has to be added to that list and to nothing else. Names, folders and comments are in English and no file is longer than
+300 lines; only the user-facing text (the `L 'pl' 'en'` pairs) is also in Polish. The code is formatted with
 PSScriptAnalyzer using `PSScriptAnalyzerSettings.psd1`:
 
 ```powershell
 Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
-    $kod = Invoke-Formatter -ScriptDefinition (Get-Content $_.FullName -Raw) -Settings .\PSScriptAnalyzerSettings.psd1
-    [IO.File]::WriteAllText($_.FullName, $kod, [Text.UTF8Encoding]::new($true))
+    $code = Invoke-Formatter -ScriptDefinition (Get-Content $_.FullName -Raw) -Settings .\PSScriptAnalyzerSettings.psd1
+    [IO.File]::WriteAllText($_.FullName, $code, [Text.UTF8Encoding]::new($true))
 }
 ```
 

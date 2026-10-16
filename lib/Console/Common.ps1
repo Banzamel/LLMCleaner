@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - naglowki, potwierdzenie i zakonczenie
+    LLMCleaner - headers, confirmation and exit
 #>
 
 function Write-Header($t) {

@@ -1,17 +1,17 @@
 ﻿<#
-    LLMCleaner - glowne okno i zdarzenia (Windows Forms, wbudowane w Windows). Logika jest w lib\Rdzen.
-    Uklad wedlug makiet 1.5: ciemny pasek nawigacji po lewej, strony z kartami (lib\Okno\Strony), listy rysowane
-    od zera (dwie linie tekstu, odznaki typu, paski rozmiaru, przelaczniki), ekran postepu czyszczenia.
-    Okno zna skalowanie ekranu (DPI) - wszystkie wymiary w pikselach ida przez Px - i motyw Windows
-    (jasny albo ciemny). Rozmiar, polozenie i ostatnia strona sa zapamietywane w okno.json.
-    Dlugie operacje AI ida w osobnym watku (CzekajNa), skan i czyszczenie odswiezaja okno (DoEvents).
+    LLMCleaner - main window and events (Windows Forms, built into Windows). The logic is in lib\Core.
+    Layout per the 1.5 mockups: dark navigation bar on the left, pages with cards (lib\Gui\Pages), owner-drawn
+    lists (two text lines, type badges, size bars, toggles), cleanup progress screen.
+    The window knows the screen scaling (DPI) - all pixel sizes go through Px - and the Windows theme
+    (light or dark). Size, position and last page are remembered in window.json.
+    Long AI operations run in a separate thread (Invoke-Background), scan and cleanup refresh the window (DoEvents).
 #>
 
 function Show-MainWindow {
     $script:Mode = 'window'
-    # Konsola PowerShella nie jest potrzebna, gdy jest okno
+    # The PowerShell console is not needed when there is a window
     if (-not $script:TestAfterStart) { [void][LlmWin.Native]::ShowWindow([LlmWin.Native]::GetConsoleWindow(), 0) }
-    # Skala jest liczona przy wczytaniu tego pliku (przed czcionkami); GDI+ powinno widziec to samo DPI
+    # The scale is computed when this file loads (before fonts); GDI+ should see the same DPI
     $gr = [Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
     $script:DpiGdiPlus = $gr.DpiX
     $gr.Dispose()
@@ -21,7 +21,7 @@ function Show-MainWindow {
     $script:UI.Hint = New-Object Windows.Forms.ToolTip
     $script:UI.Hint.AutoPopDelay = 15000
     $script:UI.Scrollables = @()
-    # Minimalny rozmiar nie wiekszy niz ekran (np. 175% na ekranie 1920x1080)
+    # Minimum size no larger than the screen (e.g. 175% on a 1920x1080 screen)
     $area = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
     $min = New-Object Drawing.Size([Math]::Min((Px 1080), $area.Width), [Math]::Min((Px 680), $area.Height))
     $f = New-Control Form @{ Text = "LLMCleaner $Version"; MinimumSize = $min; AutoScaleMode = 'None'; Font = $s.Body; BackColor = $s.Background; KeyPreview = $true }
@@ -31,7 +31,7 @@ function Show-MainWindow {
     $script:UI.Window = $f
     $f.SuspendLayout()
 
-    # Strony (wszystkie Fill, widoczna jedna) i pasek stanu pod nimi
+    # Pages (all Fill, one visible) and the status bar below them
     $content = New-Control Panel @{ Dock = 'Fill'; BackColor = $s.Background }
     $script:UI.Pages = [ordered]@{ overview = (New-OverviewPage); plan = (New-PlanPage); analysis = (New-AnalysisPage); startup = (New-StartupPage)
         drivers = (New-DriversPage); chat = (New-ChatPage); log = (New-LogPage); settings = (New-SettingsPage); cleanup = (New-CleanupPage)
@@ -49,7 +49,7 @@ function Show-MainWindow {
         $u.BtnAnalyse, $u.BtnAnalysisAi, $u.BtnSend, $u.BtnUpdate, $u.BtnStartupRefresh, $u.BtnStartupAi, $u.BtnResultScan,
         $u.BtnDriverCheck, $u.BtnDriverInstall, $u.BtnSettingsSave, $u.BtnSettingsRestart)
 
-    # ---------- ZDARZENIA ----------
+    # ---------- EVENTS ----------
     $u.BtnScan.Add_Click({ Invoke-UiAction {
                 Set-SelectedDrives @($script:UI.DriveList.Tag.Rows | Where-Object { $_.Obj.Ticked } | ForEach-Object { $_.Obj.Id })
                 Show-Page 'overview'
@@ -81,7 +81,7 @@ function Show-MainWindow {
                 $script:CleanupResult = $null
                 $script:Conversation = $null
                 $script:UI.OverviewDesc.Text = (L 'Ostatni skan: dziś, {0} · dyski {1} · nic nie zostało jeszcze usunięte' 'Last scan: today, {0} · drives {1} · nothing has been deleted yet') -f (Get-Date -Format 'HH:mm'), ($script:SelectedDrives -join ', ')
-                # Autostart do kafelka na Przegladzie (kilka sekund, tylko odczyt)
+                # Startup entries for the overview tile (a few seconds, read-only)
                 if ($null -eq $script:Startup) {
                     Set-WindowStatus (L 'Wczytuję programy uruchamiane przy logowaniu...' 'Reading the programs that start at sign-in...')
                     try { [void](Get-StartupEntries); Update-StartupPage } catch { Add-ScanError 'startup' $_ }
@@ -168,7 +168,7 @@ function Show-MainWindow {
                 Set-TaskbarProgress 1
                 try { $n = Find-DriverUpdates }
                 catch {
-                    Write-Log "Sterowniki - blad szukania: $($_.Exception.Message)"
+                    Write-Log "Drivers - search error: $($_.Exception.Message)"
                     $lv.Tag.EmptyText = (L 'Nie udało się sprawdzić Windows Update: {0}. Sprawdź połączenie z internetem i czy usługa Windows Update działa.' 'Could not check Windows Update: {0}. Check the internet connection and that the Windows Update service is running.') -f $_.Exception.Message.Trim()
                     $lv.Invalidate()
                     Set-WindowStatus (L 'Sprawdzanie sterowników nie powiodło się.' 'Checking for drivers failed.')
@@ -194,7 +194,7 @@ function Show-MainWindow {
                 if (Install-AppUpdate) { $script:UI.Window.Close() }
             } })
 
-    # Skroty: F5 skanuje, Ctrl+1..7 przelacza strony
+    # Shortcuts: F5 scans, Ctrl+1..7 switches pages
     $f.Add_KeyDown({
             if ($script:Cleaning) { return }
             if ($_.KeyCode -eq 'F5') {
@@ -219,7 +219,7 @@ function Show-MainWindow {
             $c = $script:UI.Chat
             $c.AppendText($c.Tag)
             $c.SelectAll(); $c.SelectionColor = $script:Style.TextDim; $c.Select($c.TextLength, 0)
-            # Podpowiedzi w pustych polach (EM_SETCUEBANNER)
+            # Placeholder hints in empty fields (EM_SETCUEBANNER)
             [void][LlmWin.Native]::SendMessage($script:UI.Question.Handle, 0x1501, [IntPtr]1, (L 'Napisz pytanie i naciśnij Enter...' 'Type a question and press Enter...'))
             [void][LlmWin.Native]::SendMessage($script:UI.Search.Handle, 0x1501, [IntPtr]1, (L 'Szukaj, np. Steam, cache, rejestr' 'Search, e.g. Steam, cache, registry'))
             if (-not $NoUpdateCheck) {
@@ -231,10 +231,10 @@ function Show-MainWindow {
                 }
                 Set-WindowStatus (L 'Gotowy. Wybierz dyski i kliknij „Skanuj” (F5).' 'Ready. Pick the drives and click "Scan" (F5).')
             }
-            # Tylko dla testow: ustawiane przez skrypt testowy w tym samym procesie (nigdy ze zmiennych srodowiska)
+            # Tests only: set by the test script in the same process (never from environment variables)
             if ($script:TestAfterStart) { & $script:TestAfterStart }
         })
-    # W trakcie czyszczenia okno sie nie zamyka (uslugi Windows Update, Eksplorator, pliki w polowie)
+    # The window does not close during cleanup (Windows Update services, Explorer, half-deleted files)
     $f.Add_FormClosing({
             if ($script:InstallingDrivers) {
                 $_.Cancel = $true
@@ -248,10 +248,10 @@ function Show-MainWindow {
             }
             Save-WindowState
         })
-    $f.Add_FormClosed({ Stop-Ollama; Write-Log 'Koniec (okno).' })
+    $f.Add_FormClosed({ Stop-Ollama; Write-Log 'End (window).' })
 
-    Write-Log "Start (okno). Model: $Model, Podglad: $Preview, BezLLM: $NoAI, Jezyk: $Language, Skala: $($script:Scale) (GDI+ $($script:DpiGdiPlus) dpi), Ciemny: $($script:Dark)"
+    Write-Log "Start (window). Model: $Model, Preview: $Preview, NoAI: $NoAI, Language: $Language, Scale: $($script:Scale) (GDI+ $($script:DpiGdiPlus) dpi), Dark: $($script:Dark)"
     [void]$f.ShowDialog()
-    # "Zapisz i uruchom ponownie" na stronie Ustawienia - nowe okno startuje po zapisaniu okno.json
+    # "Save and restart" on the settings page - the new window starts after window.json is saved
     if ($script:Restart) { Restart-App }
 }

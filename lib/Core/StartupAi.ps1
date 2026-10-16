@@ -2,7 +2,7 @@
     LLMCleaner - AI descriptions and advice for startup entries
 #>
 
-# Jak w analizie dysku: rada tylko z tej listy, a dla wpisow chronionych ustala ja program
+# As in disk analysis: advice only from this list; for protected entries the program sets it
 $StartupAdvice = if ($Language -eq 'en') {
     @('keep it on', 'can be turned off - start it by hand when needed', 'check whether you use it')
 }
@@ -14,8 +14,8 @@ $StartupSchema = @{
     type       = 'object'
     properties = @{
         items = @{ type = 'array'; items = @{ type = 'object'
-                properties                           = @{ id = @{ type = 'string' }; description = @{ type = 'string' }; advice = @{ type = 'string'; enum = $StartupAdvice } }
-                required                             = @('id', 'description', 'advice')
+                properties                         = @{ id = @{ type = 'string' }; description = @{ type = 'string' }; advice = @{ type = 'string'; enum = $StartupAdvice } }
+                required                           = @('id', 'description', 'advice')
             }
         }
     }
@@ -26,8 +26,8 @@ $PromptStartup = if ($Language -eq 'en') {
     @'
 You are LLMCleaner, a Windows cleanup assistant. You get a list of programs that start when the user signs in
 (name, command, publisher, source). For EACH item give:
-- "opis": what the program is and why it starts with Windows - based on the name, command and publisher,
-- "rada": one of the allowed values.
+- "description": what the program is and why it starts with Windows - based on the name, command and publisher,
+- "advice": one of the allowed values.
 Rules:
 - Chat apps, game launchers, cloud storage clients, update helpers of apps the user opens by hand and
   "helper"/"tray" tools usually do not need to start with Windows: "can be turned off - start it by hand when needed".
@@ -40,8 +40,8 @@ else {
     @'
 Jesteś LLMCleaner - asystentem sprzątania Windows. Dostajesz listę programów uruchamianych przy logowaniu
 (nazwa, polecenie, wydawca, źródło). Dla KAŻDEJ pozycji podaj:
-- "opis": czym jest program i po co startuje z Windows - na podstawie nazwy, polecenia i wydawcy,
-- "rada": jedna z dozwolonych wartości.
+- "description": czym jest program i po co startuje z Windows - na podstawie nazwy, polecenia i wydawcy,
+- "advice": jedna z dozwolonych wartości.
 Zasady:
 - Komunikatory, launchery gier, klienty chmury, pomocniki aplikacji otwieranych ręcznie i narzędzia
   w zasobniku zwykle nie muszą startować z Windows: "można wyłączyć - uruchomisz ręcznie, gdy potrzebne".
@@ -51,7 +51,7 @@ Zasady:
 '@
 }
 
-# Opisy i rady modelu dla autostartu. Zwraca liczbe opisanych pozycji (albo -1 przy bledzie).
+# Model descriptions and advice for startup entries. Returns the number of described items (or -1 on error).
 function Invoke-StartupAi($entries) {
     if (-not @($entries).Count) { return 0 }
     if (-not (Initialize-Model)) { return -1 }
@@ -69,9 +69,9 @@ function Invoke-StartupAi($entries) {
             }
         }
         Write-Line ((L '   Gotowe - opisano {0} pozycji.' '   Done - {0} items described.') -f $n) 'Green'
-        Write-Log "Autostart - opisy modelu: $answer"
+        Write-Log "Startup - model descriptions: $answer"
         $script:Conversation = $null
         $n
     }
-    catch { Write-Log "Blad modelu: $($_.Exception.Message)"; Write-Line ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
+    catch { Write-Log "Model error: $($_.Exception.Message)"; Write-Line ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
 }

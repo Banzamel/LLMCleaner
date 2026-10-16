@@ -1,8 +1,8 @@
 ﻿<#
-    LLMCleaner - pomiar i usuwanie plikow, test blokady, poprzednia wersja Windows
+    LLMCleaner - measuring and deleting files, lock test, previous Windows version
 #>
 
-# Wszystkie pliki pod katalogiem. Nie wchodzi w junctions ani symlinki.
+# All files under a folder. Does not follow junctions or symlinks.
 function Get-AllFiles($path) {
     $stack = [System.Collections.Stack]::new()
     $stack.Push([IO.DirectoryInfo]$path)
@@ -16,16 +16,16 @@ function Get-AllFiles($path) {
     }
 }
 
-# Czy pliku nie da sie teraz usunac: otwarty przez inny program bez zgody na usuniecie
-# (np. swap.vhdx dzialajacego WSL) albo brak uprawnien. Otwiera z samym prawem DELETE - tak jak
-# usuwanie - wiec nie czyta danych i antywirus go nie skanuje (~0,1 ms na plik zamiast ~2 ms).
+# Whether a file can't be deleted right now: opened by another program without delete sharing
+# (e.g. swap.vhdx of a running WSL) or no permission. Opens with DELETE access only - like a
+# delete does - so no data is read and antivirus doesn't scan it (~0.1 ms per file instead of ~2 ms).
 function Initialize-FileLockType {
     if ('LlmFileLock' -as [type]) { return }
     Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $AppDir 'lib\Core\cs\LlmFileLock.cs')))
 }
 
-# Bajty - to, co UsunZawartosc faktycznie usunie; Zajete - pliki, ktorych teraz usunac sie nie da.
-# Pliki mlodsze niz $minWiekDni nie naleza do kategorii i nie sa liczone wcale.
+# Bytes - what Remove-FolderContent will actually delete; InUse - files that can't be deleted now.
+# Files newer than $minAgeDays are not part of the category and are not counted at all.
 function Measure-Paths($paths, $minAgeDays = 0) {
     Initialize-FileLockType
     $bytes = 0.0; $n = 0; $usedBytes = 0.0; $lockedFiles = [System.Collections.Generic.List[object]]::new()
@@ -44,10 +44,10 @@ function Measure-Paths($paths, $minAgeDays = 0) {
     @{ Bytes = $bytes; Files = $n; InUse = $usedBytes; InUseFiles = $lockedFiles }
 }
 
-# Usuwa ZAWARTOSC katalogu (nie sam katalog) albo pojedynczy plik.
-# Lacza (junctions/symlinki) usuwa jako lacza, nigdy nie wchodzi do ich celu.
-# Pliki w uzyciu pomija. Przy $minWiekDni > 0 usuwa tylko pliki starsze niz tyle dni
-# - sprawdzane dla KAZDEGO pliku, nie tylko dla folderu najwyzszego poziomu.
+# Deletes the CONTENTS of a folder (not the folder itself) or a single file.
+# Links (junctions/symlinks) are deleted as links; their targets are never entered.
+# Files in use are skipped. With $minAgeDays > 0 only files older than that are deleted
+# - checked for EVERY file, not just the top-level folder.
 function Remove-FolderContent($path, $minAgeDays = 0) {
     $freed = 0.0; $errors = 0
 
@@ -97,16 +97,16 @@ function Remove-FolderContent($path, $minAgeDays = 0) {
         }
     }
 
-    # Puste katalogi - od najglebszych. Niepuste (pliki w uzyciu, swieze) zostaja.
+    # Empty folders - deepest first. Non-empty ones (files in use, recent) stay.
     $dirs.Reverse()
     foreach ($k in $dirs) { try { [IO.Directory]::Delete($k.FullName, $false) } catch { } }
 
     @{ Bytes = $freed; Errors = $errors }
 }
 
-# Windows.old i pliki instalatora aktualizacji usuwa Oczyszczanie dysku Windows (cleanmgr /sagerun),
-# tak jak "Wyczysc pliki systemowe". Recznie byloby niebezpiecznie: junctions w Windows.old
-# wskazuja na biezace C:\Users, a przejmowanie uprawnien mogloby je zmienic.
+# Windows.old and update installer files are removed by Windows Disk Cleanup (cleanmgr /sagerun),
+# like "Clean up system files". Doing it by hand is dangerous: junctions in Windows.old
+# point to the current C:\Users, and taking ownership could change them.
 $SageId = 'StateFlags0777'
 $SageKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
 $SageHandlers = @('Previous Installations', 'Temporary Setup Files')

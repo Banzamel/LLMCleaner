@@ -1,9 +1,9 @@
 ﻿<#
-    LLMCleaner - strona Ustawienia: jezyk, motyw, model AI, asystent, aktualizacje, tryb podgladu
-    Zapis do ustawienia.json (lib\Rdzen\Konfiguracja.ps1). Zmiany dzialaja po ponownym uruchomieniu.
+    LLMCleaner - settings page: language, theme, AI model, assistant, updates, preview mode
+    Saved to settings.json (lib\Core\Config.ps1). Changes take effect after a restart.
 #>
 
-# Wiersz ustawienia: opis po lewej, kontrolka po prawej
+# Settings row: description on the left, control on the right
 function New-SettingsRow([string]$title, [string]$desc, $control) {
     $s = $script:Style
     $w = New-Control Panel @{ Dock = 'Top'; Height = (Px 62); Padding = (New-Padding 0 6 0 6) }
@@ -79,12 +79,12 @@ function New-SettingsPage {
     $page
 }
 
-# Kontrolki pokazuja zapisane ustawienia (nie parametry tego uruchomienia, np. -Podglad ze skrotu)
+# Controls show the saved settings (not this run's parameters, e.g. -Preview from a shortcut)
 function Update-SettingsPage {
     $u = $script:UI; $k = $Config
     $u.SetLanguage.SelectedIndex = [Math]::Max(0, [array]::IndexOf($LanguageValues, "$($k.Language)"))
     $m = if ($k.Theme) { "$($k.Theme)" } elseif ($script:WindowPrefs.Theme) { "$($script:WindowPrefs.Theme)" } else { 'auto' }
-    $u.SetTheme.SelectedIndex = [Math]::Max(0, [array]::IndexOf($ThemeValues, $(if ($m -eq 'dark') { 'dark' } elseif ($m -eq 'light') { 'light' } else { $m })))
+    $u.SetTheme.SelectedIndex = [Math]::Max(0, [array]::IndexOf($ThemeValues, $m))
     $u.SetModel.Text = $(if ($k.Model) { "$($k.Model)" } else { $Model })
     $u.SetAi.Checked = $k.Assistant -ne $false
     $u.SetUpdates.Checked = $k.CheckUpdates -ne $false
@@ -95,20 +95,20 @@ function Save-SettingsPage {
     $u = $script:UI
     $Config.Language = $LanguageValues[[Math]::Max(0, $u.SetLanguage.SelectedIndex)]
     $Config.Theme = $ThemeValues[[Math]::Max(0, $u.SetTheme.SelectedIndex)]
-    # Model z instalatora nie trafia do pliku - kolejna instalacja z innym modelem nadal zadziala
+    # The installer's model is not written to the file - a later install with another model still works
     $m = $u.SetModel.Text.Trim()
     $Config.Model = $(if ($m -eq (Get-InstallerModel)) { '' } else { $m })
     $Config.Assistant = $u.SetAi.Checked
     $Config.CheckUpdates = $u.SetUpdates.Checked
     $Config.Preview = $u.SetPreview.Checked
-    try { Save-Config $Config; Write-Log "Ustawienia zapisane: $(ConvertTo-Json -InputObject $Config -Compress)" }
-    catch { Write-Log "Zapis ustawien: $($_.Exception.Message)"; Show-Message ((L 'Nie udało się zapisać ustawień: {0}' 'Could not save the settings: {0}') -f $_.Exception.Message) 'Error' }
+    try { Save-Config $Config; Write-Log "Settings saved: $(ConvertTo-Json -InputObject $Config -Compress)" }
+    catch { Write-Log "Saving settings: $($_.Exception.Message)"; Show-Message ((L 'Nie udało się zapisać ustawień: {0}' 'Could not save the settings: {0}') -f $_.Exception.Message) 'Error' }
 }
 
-# Nowy proces ma juz uprawnienia administratora (dziedziczy je), wiec UAC nie pyta drugi raz
+# The new process already has admin rights (inherited), so UAC does not ask again
 function Restart-App {
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$(Join-Path $AppDir 'LLMCleaner.ps1')`"", '-Sid', $UserSid)
-    if ($PreviewFromParam) { $argList += '-Podglad' }
-    try { Start-Process powershell.exe -ArgumentList $argList; Write-Log 'Ponowne uruchomienie po zmianie ustawien.' }
-    catch { Write-Log "Ponowne uruchomienie: $($_.Exception.Message)" }
+    if ($PreviewFromParam) { $argList += '-Preview' }
+    try { Start-Process powershell.exe -ArgumentList $argList; Write-Log 'Restarting after settings change.' }
+    catch { Write-Log "Restart: $($_.Exception.Message)" }
 }

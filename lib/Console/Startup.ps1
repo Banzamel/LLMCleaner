@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - menedzer autostartu
+    LLMCleaner - startup manager
 #>
 
 function Invoke-StartupConsole {

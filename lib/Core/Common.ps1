@@ -1,19 +1,19 @@
 ﻿<#
-    LLMCleaner - sciezki programu, logi, stan wspolny i drobne funkcje pomocnicze
+    LLMCleaner - program paths, logs, shared state and small helpers
 #>
 
-$Sys = $env:SystemDrive          # zwykle C:, ale Windows moze stac na innym dysku
+$Sys = $env:SystemDrive          # usually C:, but Windows may be on another drive
 $WinDir = $env:windir
-$script:Analyses = @{}            # wyniki analizy dyskow, tez dla czatu
+$script:Analyses = @{}            # drive analysis results, also used by the chat
 $script:Categories = @()
 $script:Leftovers = @()
 $script:ProfileScan = $null
-# Wlasna Ollama w folderze programu (instaluje ja Install-AI.ps1); osobny port, zeby nie
-# kolidowac z Ollama zainstalowana w systemie
+# Private Ollama in the program folder (installed by Install-AI.ps1); separate port so it doesn't
+# clash with a system-wide Ollama
 $AiDir = Join-Path $AppDir 'ai'
 $OllamaExe = Join-Path $AiDir 'ollama\ollama.exe'
 $OllamaUrl = 'http://127.0.0.1:11435'
-# Logi i kopie rejestru poza folderem programu - przetrwaja aktualizacje i odinstalowanie
+# Logs and registry backups live outside the program folder - they survive updates and uninstall
 $LogDir = Join-Path $env:LOCALAPPDATA 'LLMCleaner\logs'
 $REPARSE = [IO.FileAttributes]::ReparsePoint
 
@@ -24,12 +24,12 @@ function Write-Log($t) {
     Add-Content -LiteralPath $LogFile -Value ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $t) -Encoding UTF8
 }
 
-# Element skanu, ktorego nie da sie odczytac (dziwny folder, wpis rejestru, uszkodzony skrot), jest
-# pomijany zamiast przerywac caly skan. Szczegoly z miejscem bledu ida do logu.
+# A scan item that can't be read (odd folder, registry entry, broken shortcut) is skipped
+# instead of aborting the whole scan. Details with the error location go to the log.
 $script:ScanErrors = 0
 function Add-ScanError([string]$what, $err) {
     $script:ScanErrors++
-    Write-Log "Pominieto ($what): $($err.Exception.Message) $($err.ScriptStackTrace)"
+    Write-Log "Skipped ($what): $($err.Exception.Message) $($err.ScriptStackTrace)"
 }
 
 function Format-Size([double]$b) {

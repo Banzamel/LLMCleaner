@@ -1,12 +1,12 @@
 ﻿<#
-    LLMCleaner - pasek nawigacji
+    LLMCleaner - navigation bar
 #>
 
 function New-NavigationBar {
     $s = $script:Style
     $nav = New-Control Panel @{ Dock = 'Left'; Width = (Px 240); BackColor = $s.NavBack; Padding = (New-Padding 12 20 12 14) }
 
-    # Logo i nazwa; numer wersji jest na pasku tytulu okna
+    # Logo and name; the version number is in the window title bar
     $logo = New-Control Panel @{ Dock = 'Top'; Height = (Px 60); BackColor = $s.NavBack }
     $ico = Join-Path $AppDir 'LLMCleaner.ico'
     if (Test-Path -LiteralPath $ico) {
@@ -43,7 +43,7 @@ function New-NavigationBar {
     }
     $script:UI.NavList = $list; $script:UI.NavInfo = $info
 
-    # Dol paska: stan asystenta, tryb podgladu, aktualizacja
+    # Bottom of the bar: assistant status, preview mode, update
     $bottom = New-Control Panel @{ Dock = 'Bottom'; Height = (Px 120); BackColor = $s.NavBack }
     $ai = New-Label $(if ($NoAI) { L 'Asystent AI: wyłączony' 'AI assistant: off' } else { (L "Asystent AI: na żądanie`r`n{0}" "AI assistant: on demand`r`n{0}") -f $Model }) @{
         Dock = 'Bottom'; Height = (Px 52); ForeColor = $s.NavDim; BackColor = $s.NavBack; Font = $s.Small; Padding = (New-Padding 6 8 0 0)

@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - aktualizacje sterownikow
+    LLMCleaner - driver updates
 #>
 
 function Invoke-DriversConsole {

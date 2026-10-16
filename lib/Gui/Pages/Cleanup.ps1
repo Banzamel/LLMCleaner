@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - strona Czyszczenie (postep i wynik)
+    LLMCleaner - cleanup page (progress and result)
 #>
 
 function Initialize-Steps {
@@ -24,14 +24,14 @@ function Initialize-Steps {
     Update-Steps
 }
 
-# Wywolywane z rdzenia (ZglosKrok) w trakcie czyszczenia
+# Called from the core (Write-Step) during cleanup
 function Update-WindowStep([string]$id, [string]$state, [double]$bytes, [string]$note) {
     $k = $script:Steps | Where-Object { $_.Id -eq $id } | Select-Object -First 1
     if (-not $k) { return }
     $k.State = $state
     if ($state -ne 'running') { $k.Bytes = $bytes; $k.Note = $note }
     Update-Steps
-    # Biezacy krok zawsze widoczny na liscie
+    # The current step is always visible in the list
     if ($state -eq 'running') {
         $lv = $script:UI.LvSteps
         $w = $lv.Tag.Rows | Where-Object { $_.Obj -eq $k } | Select-Object -First 1
@@ -116,7 +116,7 @@ function Draw-CleanupResult($g, $p) {
     Draw-Text $g $bottom $s.Small $color (Px 18) (Px 88) ($p.Width - (Px 36)) (Px 20)
 }
 
-# Czyszczenie z ekranem postepu: kroki, pasek, wynik. Potwierdzenie jest wczesniej (przycisk).
+# Cleanup with a progress screen: steps, bar, result. Confirmation happens earlier (button).
 function Start-WindowCleanup {
     Initialize-Steps
     $lockedBytes = Get-LockedTotal
@@ -151,7 +151,7 @@ function Start-WindowCleanup {
     Write-WindowLog ''
     foreach ($x in (Get-CleanupSummary $w)) { Write-WindowLog "  $x" 'White' }
     Write-WindowLog "  Log: $LogFile" 'DarkGray'
-    # Martwe wpisy mogly zniknac - lista autostartu od nowa
+    # Dead entries may be gone - reload the startup list
     try { [void](Get-StartupEntries); Update-StartupPage } catch { Add-ScanError 'startup' $_ }
     Update-Overview
     Update-PlanPage

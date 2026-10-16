@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - analiza dysku
+    LLMCleaner - disk analysis
 #>
 
 function Show-Analysis($a) {

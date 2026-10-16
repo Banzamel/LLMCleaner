@@ -1,9 +1,9 @@
 ﻿<#
-    LLMCleaner - lista rysowana od zera (wiersze, sekcje, przewijanie)
+    LLMCleaner - owner-drawn list (rows, sections, scrolling)
 #>
 
-# Przewijana lista wierszy o dowolnej wysokosci. Wiersz to hashtable z H (wysokosc), Sekcja (naglowek grupy)
-# albo Obj (dane). Rysuje blok Rysuj($g, $wiersz, $prostokat, $hover); klik i dwuklik ida do Klik/Dwuklik.
+# Scrollable list of rows of any height. A row is a hashtable with H (height), Section (group header)
+# or Obj (data). Drawn by the Draw($g, $row, $rect, $hover) block; clicks go to Click/DoubleClick.
 function New-RowList([scriptblock]$draw) {
     $p = New-Control Panel @{ Dock = 'Fill'; AutoScroll = $true; BackColor = $script:Style.Card }
     Enable-DoubleBuffer $p
@@ -82,7 +82,7 @@ function Get-RowAt($list, [int]$y) {
 }
 function Get-RowRect($list, $w) { New-Object Drawing.Rectangle(0, ($w.Y + $list.AutoScrollPosition.Y), $list.ClientSize.Width, $w.H) }
 
-# Wspolne elementy wierszy: tlo pod kursorem, linia nad wierszem, naglowek grupy
+# Shared row elements: hover background, line above the row, group header
 function Draw-RowBackground($g, $r, [bool]$hover) {
     $s = $script:Style
     if ($hover) { Draw-Rect $g 0 $r.Y $r.Width $r.Height $s.Row }

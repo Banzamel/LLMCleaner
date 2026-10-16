@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - glowna petla trybu tekstowego
+    LLMCleaner - main loop of the text mode
 #>
 
 function Start-Console {
@@ -10,7 +10,7 @@ function Start-Console {
     Write-Host ((L '   {0}   asystent: {1}' '   {0}   assistant: {1}') -f (Get-Date -Format 'dd.MM.yyyy HH:mm'), $assistant) -ForegroundColor DarkGray
     if ($Preview) { Write-Host (L '   TRYB PODGLĄDU - nic nie zostanie usunięte' '   PREVIEW MODE - nothing will be deleted') -ForegroundColor Yellow }
     Write-Host ""
-    Write-Log "Start (konsola). Model: $Model, Podglad: $Preview, BezLLM: $NoAI, Jezyk: $Language"
+    Write-Log "Start (console). Model: $Model, Preview: $Preview, NoAI: $NoAI, Language: $Language"
     if (-not $NoUpdateCheck) {
         Find-AppUpdate
         if ($script:AppUpdate) {
@@ -39,7 +39,7 @@ function Start-Console {
             if ($Preview -or (Confirm-Cleanup)) { break }
             continue
         }
-        if ($w -match '^[qQ]') { Write-Log 'Przerwano przez uzytkownika.'; Exit-Console (L 'Przerwano - nic nie zostało usunięte.' 'Cancelled - nothing was deleted.') }
+        if ($w -match '^[qQ]') { Write-Log 'Cancelled by user.'; Exit-Console (L 'Przerwano - nic nie zostało usunięte.' 'Cancelled - nothing was deleted.') }
         if ($w -match '^[pP]$') { Invoke-ChatConsole; continue }
         if ($w -match '^[wW]$') { [void](Invoke-LeftoverAi); continue }
         if ($w -match '^[aA]$') { Invoke-AnalysisConsole; continue }
@@ -68,7 +68,7 @@ function Start-Console {
     }
 
     if ($Preview) {
-        Write-Log 'Tryb podgladu - koniec bez usuwania.'
+        Write-Log 'Preview mode - finished without deleting.'
         Exit-Console ((L 'Tryb podglądu - nic nie zostało usunięte. Log: {0}' 'Preview mode - nothing was deleted. Log: {0}') -f $LogFile) 'Yellow'
     }
 

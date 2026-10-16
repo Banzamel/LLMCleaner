@@ -1,8 +1,8 @@
 ﻿<#
-    LLMCleaner - punkt przywracania i wykonanie czyszczenia
+    LLMCleaner - restore point and running the cleanup
 #>
 
-# Punkt przywracania systemu przed zmianami w rejestrze (obok kopii .reg). Zwraca opis wyniku.
+# System restore point before registry changes (in addition to .reg backups). Returns a result description.
 function New-RestorePoint {
     $getLast = { Get-ComputerRestorePoint | Sort-Object SequenceNumber | Select-Object -Last 1 }
     $before = & $getLast
@@ -18,28 +18,28 @@ function New-RestorePoint {
     @{ Ok = $false; Description = ((L 'pominięty przez Windows - limit jednego punktu na dobę (ostatni: {0})' 'skipped by Windows - one restore point per day (last: {0})') -f $when) }
 }
 
-# Postep krok po kroku dla okna (ekran czyszczenia); w konsoli nic nie robi.
-# Stan: trwa, ok, czesc (zrobione z pominieciami), pominieto, blad.
+# Step-by-step progress for the window (cleanup screen); does nothing in the console.
+# State: running, ok, partial (done with skips), skipped, error.
 $script:OnStep = $null
 function Write-Step([string]$id, [string]$state, [double]$bytes = 0, [string]$note = '') {
     if ($script:OnStep) { & $script:OnStep $id $state $bytes $note }
 }
 
-# Punkt przywracania przed zmianami, ktorych nie cofnie Kosz: rejestr, zadania, sterowniki
+# Restore point before changes the Recycle Bin cannot undo: registry, tasks, drivers
 function Test-RestorePointNeeded {
     [bool](@($script:Leftovers | Where-Object { $_.Selected -and -not (Test-GoesToRecycleBin $_) }).Count -or
         @($script:Categories | Where-Object { $_.Selected -and $_.Type -eq 'driverstore' }).Count)
 }
 
-# Czysci zaznaczone kategorie i pozostalosci. Zwraca podsumowanie.
+# Cleans the selected categories and leftovers. Returns a summary.
 function Invoke-Cleanup {
-    Stop-Ollama   # asystent nie jest juz potrzebny - zwalnia VRAM i RAM na czas czyszczenia
-    Write-Log ("Plan: kategorie [{0}], pozostalosci [{1}]" -f (($script:Categories | Where-Object { $_.Selected } | ForEach-Object { $_.Id }) -join ', '),
+    Stop-Ollama   # the assistant is no longer needed - frees VRAM and RAM for the cleanup
+    Write-Log ("Plan: categories [{0}], leftovers [{1}]" -f (($script:Categories | Where-Object { $_.Selected } | ForEach-Object { $_.Id }) -join ', '),
         (($script:Leftovers | Where-Object { $_.Selected } | ForEach-Object { $_.Id }) -join ', '))
     $timer = [Diagnostics.Stopwatch]::StartNew()
     $total = 0.0
 
-    # Najpierw to, co idzie do Kosza, potem rejestr i zadania (osobne kroki na ekranie postepu)
+    # First what goes to the Recycle Bin, then registry and tasks (separate steps on the progress screen)
     $selectedLeftovers = @(@($script:Leftovers | Where-Object { $_.Selected -and (Test-GoesToRecycleBin $_) }) +
         @($script:Leftovers | Where-Object { $_.Selected -and -not (Test-GoesToRecycleBin $_) }))
     if (Test-RestorePointNeeded) {
@@ -47,7 +47,7 @@ function Invoke-Cleanup {
         Write-Line (L '  Tworzę punkt przywracania systemu (do 30 s)...' '  Creating a System Restore point (up to 30 s)...') 'Gray'
         $restore = New-RestorePoint
         Write-Line ((L '  Punkt przywracania: {0}' '  Restore point: {0}') -f $restore.Description) $(if ($restore.Ok) { 'Green' } else { 'Yellow' })
-        Write-Log "Punkt przywracania: $($restore.Description)"
+        Write-Log "Restore point: $($restore.Description)"
         Write-Step 'restorepoint' $(if ($restore.Ok) { 'ok' } else { 'partial' }) 0 $restore.Description
     }
 
@@ -57,7 +57,7 @@ function Invoke-Cleanup {
         Write-Step $k.Id 'running'
         if ($k.Processes -and (Get-Process $k.Processes)) {
             Write-Line ("  {0,-52} {1}" -f $k.Name, (L 'pominięto (przeglądarka działa)' 'skipped (a browser is running)')) 'Yellow'
-            Write-Log "$($k.Id): pominieto - dziala przegladarka"
+            Write-Log "$($k.Id): skipped - a browser is running"
             Write-Step $k.Id 'skipped' 0 (L 'pominięto: działa przeglądarka' 'skipped: a browser is running')
             continue
         }
@@ -87,7 +87,7 @@ function Invoke-Cleanup {
                 Stop-Process -Name explorer -Force
                 Wait-Responsive 3000
                 foreach ($f in Get-ThumbnailFiles) { try { $len = $f.Length; $f.Delete(); $gain += $len } catch { $errors++ } }
-                # Windows sam wznawia powloke; recznie tylko na wlasnym koncie (inaczej ruszylaby jako administrator)
+                # Windows restarts the shell itself; manually only on our own account (otherwise it would run as administrator)
                 for ($i = 0; $i -lt 10 -and -not (Get-Process explorer); $i++) { Wait-Responsive 1000 }
                 if (-not (Get-Process explorer) -and -not $OtherUser) { Start-Process explorer.exe }
             }
@@ -117,18 +117,18 @@ function Invoke-Cleanup {
                 if ($containers.Count) {
                     Write-Line ((L '  Docker zatrzymuje i usuwa kontenery: {0}...' '  Docker is stopping and removing containers: {0}...') -f $containers.Count) 'Gray'
                     docker rm -f -v @containers 2>&1 | Out-Null
-                    Write-Log "Docker: usunieto kontenery ($($containers.Count))"
+                    Write-Log "Docker: removed containers ($($containers.Count))"
                 }
                 Write-Line (L '  Docker usuwa obrazy, wolumeny, sieci i cache...' '  Docker is removing images, volumes, networks and cache...') 'Gray'
                 docker system prune -a --volumes -f 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Line "  $_" 'DarkGray' }
-                # Od Dockera 23 prune --volumes usuwa tylko wolumeny anonimowe, nazwane trzeba usunac osobno
+                # Since Docker 23 prune --volumes removes only anonymous volumes; named ones must be removed separately
                 $volumes = @(docker volume ls -q 2>$null | Where-Object { $_ })
                 if ($volumes.Count) {
                     Write-Line ((L '  Docker usuwa wolumeny: {0}...' '  Docker is removing volumes: {0}...') -f $volumes.Count) 'Gray'
                     docker volume rm -f @volumes 2>&1 | Out-Null
-                    Write-Log "Docker: usunieto wolumeny ($($volumes.Count))"
+                    Write-Log "Docker: removed volumes ($($volumes.Count))"
                 }
-                # Historia budowania (lista Builds w Docker Desktop) dla kazdego buildera; starsze buildx nie maja tej komendy
+                # Build history (the Builds list in Docker Desktop) for each builder; older buildx lacks this command
                 $builders = @(docker buildx ls --format '{{.Name}}' 2>$null | Where-Object { $_ -and $_ -notmatch '\s' } | Select-Object -Unique)
                 if (-not $builders.Count) { $builders = @('') }
                 foreach ($b in $builders) {
@@ -141,8 +141,8 @@ function Invoke-Cleanup {
                 foreach ($d in $k.Packages) {
                     Wait-Responsive 0
                     $output = & pnputil.exe /delete-driver $d.Inf 2>&1
-                    if ($LASTEXITCODE -eq 0) { $gain += $d.Bytes; Write-Log "Sterownik usuniety: $($d.Inf) $($d.Name) $($d.Version) ($(Format-Size $d.Bytes))" }
-                    else { $errors++; Write-Log "Sterownik zostawiony: $($d.Inf) $($d.Name) $($d.Version): $($output -join ' ')" }
+                    if ($LASTEXITCODE -eq 0) { $gain += $d.Bytes; Write-Log "Driver removed: $($d.Inf) $($d.Name) $($d.Version) ($(Format-Size $d.Bytes))" }
+                    else { $errors++; Write-Log "Driver kept: $($d.Inf) $($d.Name) $($d.Version): $($output -join ' ')" }
                 }
             }
         }
@@ -151,10 +151,10 @@ function Invoke-Cleanup {
         $suffix = if ($errors) { (L '  ({0} w użyciu, pominięte)' '  ({0} in use, skipped)') -f $errors } else { '' }
         if ($skippedApps) {
             $suffix += (L '  (pominięto - działa: {0})' '  (skipped - running: {0})') -f ($skippedApps -join ', ')
-            Write-Log "$($k.Id): pominieto dzialajace $($skippedApps -join ', ')"
+            Write-Log "$($k.Id): skipped running $($skippedApps -join ', ')"
         }
         Write-Line ("  {0,-52} {1,10}{2}" -f $k.Name, (Format-Size $gain), $suffix) $color
-        Write-Log ("{0}: {1} zwolnione, {2} pominietych" -f $k.Id, (Format-Size $gain), $errors)
+        Write-Log ("{0}: {1} freed, {2} skipped" -f $k.Id, (Format-Size $gain), $errors)
         $notes = @()
         if ($errors) { $notes += (L '{0} w użyciu - pominięte' '{0} in use - skipped') -f $errors }
         if ($skippedApps) { $notes += (L 'pominięto: działa {0}' 'skipped: {0} is running') -f ($skippedApps -join ', ') }
@@ -183,17 +183,17 @@ function Invoke-Cleanup {
             }
             try {
                 if ($p.Type -eq 'folder') {
-                    # Ostatni bezpiecznik: korzenia dysku, Kosza i folderow systemowych nie usuwamy nigdy
+                    # Last safeguard: never delete a drive root, the Recycle Bin or system folders
                     if (Test-ProtectedFolder $p.Path) { throw (L 'folder chroniony - zostawiony' 'protected folder - kept') }
                     [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p.Path, 'OnlyErrorDialogs', 'SendToRecycleBin')
                     Write-Line ("  {0,-60} {1,10}  {2}" -f $p.Path, (Format-Size $p.Bytes), $toBin) 'Green'
-                    Write-Log "Do Kosza (folder): $($p.Path) ($(Format-Size $p.Bytes))"
+                    Write-Log "To Recycle Bin (folder): $($p.Path) ($(Format-Size $p.Bytes))"
                     $stepBytes += [double]$p.Bytes
                 }
                 elseif ($p.Type -eq 'file') {
                     [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p.Path, 'OnlyErrorDialogs', 'SendToRecycleBin')
                     Write-Line ("  {0,-60} {1,10}  {2}" -f $p.Path, (Format-Size $p.Bytes), $toBin) 'Green'
-                    Write-Log "Do Kosza (plik): $($p.Path) ($(Format-Size $p.Bytes))"
+                    Write-Log "To Recycle Bin (file): $($p.Path) ($(Format-Size $p.Bytes))"
                     $stepBytes += [double]$p.Bytes
                 }
                 elseif ($p.Type -eq 'registry') {
@@ -203,7 +203,7 @@ function Invoke-Cleanup {
                     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $file)) { throw (L 'nie udało się zrobić kopii - klucz zostawiony' 'backup failed - key kept') }
                     Remove-Item -LiteralPath "Registry::$($p.Path)" -Recurse -Force -ErrorAction Stop
                     Write-Line ("  {0,-60} {1,10}" -f $p.Path, (L 'usunięty' 'deleted')) 'Green'
-                    Write-Log "Rejestr usuniety: $($p.Path) (kopia: $file)"
+                    Write-Log "Registry removed: $($p.Path) (backup: $file)"
                 }
                 elseif ($p.Type -eq 'regvalue') {
                     New-Item -ItemType Directory -Force $backups | Out-Null
@@ -211,7 +211,7 @@ function Invoke-Cleanup {
                     Backup-RegistryValue $p.Path $p.ValueName $file
                     Remove-ItemProperty -LiteralPath "Registry::$($p.Path)" -Name $p.ValueName -Force -ErrorAction Stop
                     Write-Line ("  {0,-60} {1,10}" -f (Format-Leftover $p), (L 'usunięty' 'deleted')) 'Green'
-                    Write-Log "Rejestr usuniety: $($p.Path) -> $($p.ValueName) (kopia: $file)"
+                    Write-Log "Registry removed: $($p.Path) -> $($p.ValueName) (backup: $file)"
                 }
                 elseif ($p.Type -eq 'task') {
                     New-Item -ItemType Directory -Force $backups | Out-Null
@@ -221,12 +221,12 @@ function Invoke-Cleanup {
                     [IO.File]::WriteAllText($file, $xml, [Text.Encoding]::Unicode)
                     Unregister-ScheduledTask -TaskName $p.Name -TaskPath $p.Folder -Confirm:$false -ErrorAction Stop
                     Write-Line ("  {0,-60} {1,10}" -f (Format-Leftover $p), (L 'usunięte' 'deleted')) 'Green'
-                    Write-Log "Zadanie usuniete: $($p.Path) (kopia: $file)"
+                    Write-Log "Task removed: $($p.Path) (backup: $file)"
                 }
             }
             catch {
                 Write-Line ("  {0}: {1}" -f $p.Path, $_.Exception.Message) 'Yellow'
-                Write-Log "Blad pozostalosci $($p.Path): $($_.Exception.Message)"
+                Write-Log "Leftover error $($p.Path): $($_.Exception.Message)"
                 $stepErrors++
             }
         }
@@ -241,11 +241,11 @@ function Invoke-Cleanup {
 
     $timer.Stop()
     $freeAfter = Get-SystemFreeSpace
-    Write-Log ("Koniec. Usunieto {0}, wolne {1}: {2} -> {3}" -f (Format-Size $total), $Sys, (Format-Size $script:FreeBefore), (Format-Size $freeAfter))
+    Write-Log ("Done. Removed {0}, free on {1}: {2} -> {3}" -f (Format-Size $total), $Sys, (Format-Size $script:FreeBefore), (Format-Size $freeAfter))
     @{ Total = $total; Duration = $timer.Elapsed; FreeBefore = $script:FreeBefore; FreeAfter = $freeAfter; Backups = $backups }
 }
 
-# Tekst podsumowania po czyszczeniu (linie)
+# Summary text after cleanup (lines)
 function Get-CleanupSummary($w) {
     @(
         (L 'Usunięte dane       : {0}' 'Data removed        : {0}') -f (Format-Size $w.Total)

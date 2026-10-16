@@ -1,19 +1,19 @@
 ﻿<#
-    LLMCleaner - ustawienia okna (okno.json), motyw jasny/ciemny, palety kolorow i czcionki
+    LLMCleaner - window settings (window.json), light/dark theme, color palettes and fonts
 #>
 
-# okno.json: rozmiar, polozenie, ostatnia strona i motyw ("auto", "jasny" albo "ciemny")
-$script:WindowFile = Join-Path $env:LOCALAPPDATA 'LLMCleaner\okno.json'
-$script:WindowPrefs = $null
-if (Test-Path -LiteralPath $script:WindowFile) {
-    try { $script:WindowPrefs = Get-Content -LiteralPath $script:WindowFile -Raw | ConvertFrom-Json } catch { $script:WindowPrefs = $null }
-}
+# window.json: size, position, last page and theme ("auto", "light" or "dark")
+$script:WindowFile = Join-Path $env:LOCALAPPDATA 'LLMCleaner\window.json'
+# Older versions saved okno.json with Polish keys and page ids
+$oldWindowKeys = @{ Skala = 'Scale'; Strona = 'Page'; Motyw = 'Theme' }
+$prefs = Read-PrefsFile $script:WindowFile (Join-Path $env:LOCALAPPDATA 'LLMCleaner\okno.json') $oldWindowKeys
+$script:WindowPrefs = if ($prefs) { [pscustomobject]$prefs } else { $null }
 
 function Test-DarkTheme {
-    # Motyw ze strony Ustawienia ma pierwszenstwo przed starszym polem w okno.json
+    # The theme from the settings page takes precedence over the older field in window.json
     $m = if ($Config -and $Config.Theme) { "$($Config.Theme)" } else { "$($script:WindowPrefs.Theme)" }
-    if ($m -in 'dark', 'dark') { return $true }
-    if ($m -in 'light', 'light') { return $false }
+    if ($m -eq 'dark') { return $true }
+    if ($m -eq 'light') { return $false }
     (Get-ItemProperty "$HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").AppsUseLightTheme -eq 0
 }
 $script:Dark = [bool](Test-DarkTheme)
@@ -49,7 +49,7 @@ $script:Style = @{}
 $palette = if ($script:Dark) { $DarkPalette } else { $LightPalette }
 foreach ($k in $palette.Keys) { $script:Style[$k] = ConvertTo-Color $palette[$k] }
 $fonts = (New-Object Drawing.Text.InstalledFontCollection).Families.Name
-# Wszystkie czcionki okna sa tutaj (w punktach - Windows przelicza je na piksele wedlug DPI)
+# All window fonts are here (in points - Windows converts them to pixels by DPI)
 $script:Style.Body = New-Object Drawing.Font('Segoe UI', 10)
 $script:Style.Small = New-Object Drawing.Font('Segoe UI', 9.5)
 $script:Style.SmallBold = New-Object Drawing.Font('Segoe UI Semibold', 9)
@@ -67,13 +67,13 @@ $script:Style.Nav = New-Object Drawing.Font('Segoe UI', 10.5)
 $script:Style.NavSelected = New-Object Drawing.Font('Segoe UI Semibold', 10.5)
 $script:Style.Input = New-Object Drawing.Font('Segoe UI', 10.5)
 $script:Style.Mono = New-Object Drawing.Font('Consolas', 9.5)
-# Ikony z czcionki Windows 10/11; bez niej nawigacja jest po prostu bez ikon
+# Icons from the Windows 10/11 font; without it the navigation simply has no icons
 if ($fonts -contains 'Segoe MDL2 Assets') {
     $script:Style.Icons = New-Object Drawing.Font('Segoe MDL2 Assets', 12)
     $script:Style.IconsSmall = New-Object Drawing.Font('Segoe MDL2 Assets', 8)
 }
 
-# Kolory linii logu (nazwy kolorow konsoli)
+# Log line colors (console color names)
 $LogColors = if ($script:Dark) {
     @{ Gray = ConvertTo-Color '#C9CDD8'; DarkGray = ConvertTo-Color '#7C8399'; White = ConvertTo-Color '#F3F4F8'; Green = ConvertTo-Color '#4ADE80'; Yellow = ConvertTo-Color '#FBBF24'
         Cyan = ConvertTo-Color '#93B4FF'; DarkCyan = ConvertTo-Color '#5EEAD4'; DarkYellow = ConvertTo-Color '#E0A458'

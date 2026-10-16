@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - strona Plan czyszczenia
+    LLMCleaner - plan page (cleanup plan)
 #>
 
 function Get-ConfidenceStyle([string]$p) {
@@ -26,7 +26,7 @@ function Get-PlanBadge($o, [bool]$cat) {
     }
 }
 
-# Opis pozycji planu w drugiej linii: tekst i kolor
+# Plan item description on the second line: text and color
 function Get-PlanDescription($o, [bool]$cat) {
     $s = $script:Style
     if ($cat) {
@@ -38,7 +38,7 @@ function Get-PlanDescription($o, [bool]$cat) {
     @{ T = $o.Reason; K = $s.TextDim }
 }
 
-# Uklad kolumn listy planu (ten sam dla naglowka i wierszy)
+# Plan list column layout (same for header and rows)
 function Get-PlanColumns([int]$width) {
     $conf = $width - (Px 18) - (Px 110)
     $sizeText = $conf - (Px 12) - (Px 190)
@@ -145,7 +145,7 @@ function New-PlanPage {
     $page = New-Page
     $n = New-PageHeader (L 'Plan czyszczenia' 'Cleanup plan') (L 'Kliknij pozycję, żeby ją zaznaczyć lub odznaczyć. Pliki i foldery trafiają do Kosza, rejestr i zadania mają kopię i punkt przywracania. Najedź na pozycję, żeby zobaczyć pełny opis.' 'Click an item to tick or untick it. Files and folders go to the Recycle Bin; registry entries and tasks get a backup and a restore point. Hover over an item to see its full description.')
 
-    # Pasek narzedzi: szukanie, filtr, przyciski zaznaczania
+    # Toolbar: search, filter, selection buttons
     $bar = New-Control Panel @{ Dock = 'Top'; Height = (Px 40) }
     $search = New-Card @{ Dock = 'Left'; Width = (Px 300); Padding = (New-Padding 12 10 10 6) }
     $script:UI.SearchCard = $search
@@ -184,7 +184,7 @@ function New-PlanPage {
     $bar.Add_Resize({ if ($script:UI.SearchCard) { $script:UI.SearchCard.Width = [Math]::Max((Px 160), [Math]::Min((Px 320), $this.Width - $script:UI.PlanFilter.Width - $script:UI.BtnRecommended.Width - $script:UI.BtnClearSelection.Width - (Px 34))) } })
     $script:UI.BtnRecommended = $btnRecommended; $script:UI.BtnClearSelection = $btnClear; $script:UI.PlanFilter = $filter
 
-    # Lista z naglowkiem kolumn
+    # List with column header
     $k = New-Card @{ Dock = 'Fill'; Padding = (New-Padding 2 4 2 8) }
     $lv = New-RowList { param($g, $w, $r, $h) Draw-PlanRow $g $w $r $h }
     $col = New-Canvas @{ Dock = 'Top'; Height = (Px 34); BackColor = $s.Card } { param($g, $p) Draw-PlanColumns $g $p }
@@ -206,7 +206,7 @@ function New-PlanPage {
     Add-Docked $k @($col, $lv)
     $script:UI.LvPlan = $lv; $script:UI.PlanColumns = $col
 
-    # Pasek akcji pod lista
+    # Action bar below the list
     $bottom = New-Card @{ Dock = 'Bottom'; Height = (Px 74); Padding = (New-Padding 20 14 14 14) }
     $btnClean = New-Button $(if ($Preview) { L 'Podgląd - czyszczenie wyłączone' 'Preview - cleaning disabled' } else { L 'Wyczyść zaznaczone...' 'Clean selected...' }) 'primary' @{ Dock = 'Right'; Width = (Px 220) }
     $btnExplain = New-Button (L 'AI: czym były pozostałości?' 'AI: what were the leftovers?') 'secondary' @{ Dock = 'Right'; Width = (Px 240) }

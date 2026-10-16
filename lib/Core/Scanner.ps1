@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - skan kategorii i dysku, Docker, caly skan
+    LLMCleaner - category and disk scan, Docker, full scan
 #>
 
 function Measure-Categories {
@@ -16,7 +16,7 @@ function Measure-Categories {
                         $names = ($largest | Select-Object -First 3 | ForEach-Object { $_.Name }) -join ', '
                         if ($largest.Count -gt 3) { $names += (L ' i {0} innych' ' and {0} more') -f ($largest.Count - 3) }
                         $k.Note = (L 'Razem {0}: do usunięcia {1}, zablokowane {2} - pliki używane przez działające programy ({3}). Zamknij je, żeby usunąć resztę.' 'Total {0}: {1} can be deleted, {2} is locked - files used by running programs ({3}). Close them to delete the rest.') -f (Format-Size ($m.Bytes + $m.InUse)), (Format-Size $m.Bytes), (Format-Size $m.InUse), $names
-                        Write-Log "$($k.Id): zablokowane $(Format-Size $m.InUse) w $($largest.Count) plikach, najwieksze: $names"
+                        Write-Log "$($k.Id): locked $(Format-Size $m.InUse) in $($largest.Count) files, largest: $names"
                     }
                 }
                 'winold' { $m = Measure-Paths $k.Paths; $k.Bytes = $m.Bytes; $k.Files = $m.Files }
@@ -40,17 +40,17 @@ function Measure-Categories {
                 }
             }
         }
-        catch { Add-ScanError "kategoria $($k.Id)" $_ }
+        catch { Add-ScanError "category $($k.Id)" $_ }
         if ($k.Processes -and (Get-Process $k.Processes)) { $k.Blocker = L 'uruchomiona przeglądarka - zamknij ją przed czyszczeniem' 'a browser is running - close it before cleaning' }
     }
 }
 
-# Docker: ile da sie odzyskac wedlug "docker system df" (kolumna RECLAIMABLE). Pusto, gdy Docker nie dziala.
+# Docker: how much can be reclaimed per "docker system df" (RECLAIMABLE column). Empty when Docker is not running.
 $script:DockerRunning = $false
 function ConvertFrom-DockerSize([string]$s) {
     $m = [regex]::Match("$s", '^\s*([\d\.]+)\s*([kKMGT]?)B')
     if (-not $m.Success) { return 0.0 }
-    $mult = @{ '' = 1.0; 'k' = 1e3; 'M' = 1e6; 'G' = 1e9; 'T' = 1e12 }[$m.Groups[2].Value]   # klucze bez rozroznienia wielkosci liter
+    $mult = @{ '' = 1.0; 'k' = 1e3; 'M' = 1e6; 'G' = 1e9; 'T' = 1e12 }[$m.Groups[2].Value]   # case-insensitive keys
     [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) * $mult
 }
 function Get-DockerUsage {
@@ -83,7 +83,7 @@ function Invoke-ProfileScan {
     foreach ($f in Get-AllFiles $profileDir) {
         $n++
         if ($n % 5000 -eq 0) { Write-Status ((L '   przejrzano {0:N0} plików...' '   scanned {0:N0} files...') -f $n) }
-        if ([int]$f.Attributes -band 0x401000) { continue }   # pliki tylko w chmurze (OneDrive)
+        if ([int]$f.Attributes -band 0x401000) { continue }   # cloud-only files (OneDrive)
         $parts = $f.FullName.Substring($profileDir.Length + 1).Split('\')
         if ($parts.Count -lt 2) { continue }
         $topFolders[$parts[0]] += $f.Length
@@ -94,7 +94,7 @@ function Invoke-ProfileScan {
     }
     Complete-Status ((L '   przejrzano {0:N0} plików w profilu.           ' '   scanned {0:N0} files in the profile.           ') -f $n)
 
-    # Kandydaci do recznego usuniecia: duze pliki w Pobranych + pliki > 1 GB poza AppData.
+    # Candidates for manual deletion: large files in Downloads + files > 1 GB outside AppData.
     $downloads = Get-DownloadsFolder
     $candidates = @()
     $fromDownloads = @(Get-AllFiles $downloads | Where-Object { $_.Length -ge 100MB } | Sort-Object Length -Descending | Select-Object -First 15)
@@ -117,31 +117,31 @@ function Invoke-ProfileScan {
         Candidates = $candidates
         Profile    = @($topFolders.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10 |
                 ForEach-Object { @{ folder = $_.Key; size = (Format-Size $_.Value) } })
-        AppData   = @($appdata.GetEnumerator() | Where-Object { $_.Value -ge 300MB } | Sort-Object Value -Descending |
+        AppData    = @($appdata.GetEnumerator() | Where-Object { $_.Value -ge 300MB } | Sort-Object Value -Descending |
                 Select-Object -First 12 | ForEach-Object { @{ folder = $_.Key; size = (Format-Size $_.Value) } })
-        Programs  = @($programs)
-        System    = @{
-            hiberfil            = $(if ($hib) { Format-Size $hib.Length } else { L 'brak (hibernacja wyłączona)' 'none (hibernation off)' })
-            windows_old         = (Test-Path -LiteralPath "$Sys\Windows.old")
+        Programs   = @($programs)
+        System     = @{
+            hiberfil     = $(if ($hib) { Format-Size $hib.Length } else { L 'brak (hibernacja wyłączona)' 'none (hibernation off)' })
+            windows_old  = (Test-Path -LiteralPath "$Sys\Windows.old")
             old_setup_bt = (Test-Path -LiteralPath "$Sys\`$WINDOWS.~BT")
         }
         Drives     = @(Get-SelectedDrives | ForEach-Object { @{ drive = $_.DeviceID; free = (Format-Size $_.FreeSpace); total = (Format-Size $_.Size) } })
     }
 }
 
-# Caly skan: kategorie, profil, pozostalosci i plan. Wynik w $script:Kategorie/Pozostalosci/Dysk.
+# Full scan: categories, profile, leftovers and plan. Results in $script:Categories/Leftovers/ProfileScan.
 function Invoke-FullScan {
-    Write-Log "Dyski: $($script:SelectedDrives -join ', '), uzytkownik: $UserSid$(if ($OtherUser) { ' (inne konto niz administrator)' })"
+    Write-Log "Drives: $($script:SelectedDrives -join ', '), user: $UserSid$(if ($OtherUser) { ' (different account than administrator)' })"
     $script:ScanErrors = 0
     $script:FreeBefore = Get-SystemFreeSpace
-    try { $script:Categories = @(New-Categories) } catch { Add-ScanError 'kategorie' $_; $script:Categories = @() }
+    try { $script:Categories = @(New-Categories) } catch { Add-ScanError 'categories' $_; $script:Categories = @() }
     Measure-Categories
     Write-Line (L '   Przeglądam profil użytkownika (duże pliki, AppData)...' '   Scanning the user profile (large files, AppData)...') 'DarkGray'
     try { $script:ProfileScan = Invoke-ProfileScan }
-    catch { Add-ScanError 'profil' $_; $script:ProfileScan = @{ Candidates = @(); Profile = @(); AppData = @(); Programs = @(); System = @{}; Drives = @() } }
+    catch { Add-ScanError 'profile' $_; $script:ProfileScan = @{ Candidates = @(); Profile = @(); AppData = @(); Programs = @(); System = @{}; Drives = @() } }
     Write-Line (L '   Szukam pozostałości po odinstalowanych programach i grach...' '   Looking for leftovers of uninstalled programs and games...') 'DarkGray'
-    try { $leftoverList = @(Find-Leftovers) } catch { Add-ScanError 'pozostalosci' $_; $leftoverList = @() }
-    # Duze pliki z Pobranych i spoza AppData - do decyzji uzytkownika, nigdy zaznaczone z gory
+    try { $leftoverList = @(Find-Leftovers) } catch { Add-ScanError 'leftovers' $_; $leftoverList = @() }
+    # Large files from Downloads and outside AppData - the user decides, never preselected
     foreach ($c in $script:ProfileScan.Candidates) {
         $leftoverList += @{ Type = 'file'; Path = $c.Path; Name = (Split-Path $c.Path -Leaf); Bytes = $c.Bytes
             LastWrite = $c.Modified; Confidence = 'low'
@@ -158,5 +158,5 @@ function Invoke-FullScan {
         Write-Line ((L '   Pominięto elementy, których nie dało się odczytać: {0} (szczegóły w logu: {1})' '   Skipped items that could not be read: {0} (details in the log: {1})') -f $script:ScanErrors, $LogFile) 'Yellow'
     }
     Build-Plan
-    Write-Log "Raport: $(Get-ReportJson)"
+    Write-Log "Report: $(Get-ReportJson)"
 }

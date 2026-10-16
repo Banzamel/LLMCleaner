@@ -1,14 +1,14 @@
 ﻿<#
-    LLMCleaner - aktualizacje sterownikow z Windows Update
+    LLMCleaner - driver updates from Windows Update
 #>
 
-# Nowsze sterowniki z Windows Update - te same, co Ustawienia > Windows Update > Aktualizacje opcjonalne.
-# Szukanie i instalacja ida przez Windows Update Agent (COM) w osobnym watku: szukanie trwa zwykle 1-3 min.
-# Zapytanie idzie do Windows Update tylko po kliknieciu "Sprawdz", nigdy przy starcie.
-$script:Drivers = $null          # $null = jeszcze nie sprawdzano
+# Newer drivers from Windows Update - the same as Settings > Windows Update > Optional updates.
+# Search and install go through Windows Update Agent (COM) on a separate thread: search usually takes 1-3 min.
+# Windows Update is queried only after clicking "Check", never at startup.
+$script:Drivers = $null          # $null = not checked yet
 $script:ProblemDevices = @()
 
-# Wersja z tytulu aktualizacji, np. "Intel Corporation - Display - 31.0.101.4502"
+# Version from the update title, e.g. "Intel Corporation - Display - 31.0.101.4502"
 function Get-VersionFromTitle([string]$t) { if ($t -match '(\d+(\.\d+){1,3})\s*$') { $Matches[1] } else { '' } }
 
 function Get-ProblemDescription([int]$code) {
@@ -21,20 +21,20 @@ function Get-ProblemDescription([int]$code) {
     }
 }
 
-# Urzadzenia z bledem w Menedzerze urzadzen. Pomijamy wylaczone (22) i odlaczone (24, 45).
+# Devices with an error in Device Manager. Disabled (22) and disconnected (24, 45) are skipped.
 function Get-ProblemDevices {
     @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.ConfigManagerErrorCode -notin 0, 22, 24, 45 -and $_.Present -ne $false } |
             ForEach-Object { @{ Name = $(if ($_.Name) { $_.Name } else { $_.DeviceID }); Id = $_.DeviceID; Code = [int]$_.ConfigManagerErrorCode; Description = (Get-ProblemDescription $_.ConfigManagerErrorCode) } })
 }
 
-# Szuka nowszych sterownikow i dopasowuje je do urzadzen (obecna wersja i data). Zwraca liczbe znalezionych.
+# Searches for newer drivers and matches them to devices (current version and date). Returns the number found.
 function Find-DriverUpdates {
-    Write-Log 'Sterowniki: szukanie w Windows Update'
+    Write-Log 'Drivers: searching Windows Update'
     $found = @(Invoke-Background {
             $session = New-Object -ComObject Microsoft.Update.Session
             $session.ClientApplicationID = 'LLMCleaner'
             $searcher = $session.CreateUpdateSearcher()
-            $searcher.ServerSelection = 2   # Windows Update, takze na komputerze z WSUS
+            $searcher.ServerSelection = 2   # Windows Update, even on a computer with WSUS
             foreach ($u in $searcher.Search("IsInstalled=0 and Type='Driver' and IsHidden=0").Updates) {
                 [pscustomobject]@{ Id = $u.Identity.UpdateID; Title = $u.Title; Model = $u.DriverModel; Provider = $u.DriverProvider
                     Class = $u.DriverClass; NewDate = $u.DriverVerDate; HwId = $u.DriverHardwareID; Bytes = [double]$u.MaxDownloadSize
@@ -42,7 +42,7 @@ function Find-DriverUpdates {
             }
         } | Where-Object { $_ })
 
-    # Urzadzenie po identyfikatorze sprzetu (najpierw HardwareID, potem CompatibleID) i jego obecny sterownik
+    # Device by hardware ID (HardwareID first, then CompatibleID) and its current driver
     $deviceDrivers = @{}
     foreach ($d in Get-CimInstance Win32_PnPSignedDriver) { if ($d.DeviceID) { $deviceDrivers[$d.DeviceID] = $d } }
     $devices = @{}
@@ -63,8 +63,8 @@ function Find-DriverUpdates {
             }
         })
     $script:ProblemDevices = Get-ProblemDevices
-    Write-Log "Sterowniki: $(($script:Drivers | ForEach-Object { "$($_.Title) [$($_.CurrentVersion)]" }) -join ', ')"
-    Write-Log "Urzadzenia z problemem: $(($script:ProblemDevices | ForEach-Object { "$($_.Name) ($($_.Code))" }) -join ', ')"
+    Write-Log "Drivers: $(($script:Drivers | ForEach-Object { "$($_.Title) [$($_.CurrentVersion)]" }) -join ', ')"
+    Write-Log "Devices with a problem: $(($script:ProblemDevices | ForEach-Object { "$($_.Name) ($($_.Code))" }) -join ', ')"
     $script:Drivers.Count
 }
 
@@ -88,14 +88,14 @@ function Get-DriverStateName([string]$state) {
     }
 }
 
-# Instaluje sterowniki po kolei (pobranie i instalacja przez Windows Update). Stan kazdego idzie do
-# $stan (zsynchronizowana tablica: Id -> szukanie, pobieranie, instalacja, ok, restart, brak, blad:...),
-# ktora okno odczytuje w trakcie. Zwraca liczbe zainstalowanych.
+# Installs drivers one by one (download and install via Windows Update). Each one's state goes to
+# $state (synchronized hashtable: Id -> searching, waiting, downloading, installing, ok, restart, gone, fail:...),
+# which the window reads meanwhile. Returns the number installed.
 function Install-Drivers($list, [hashtable]$state) {
     $list = @($list)
     if (-not $list.Count) { return 0 }
     foreach ($s in $list) { $state[$s.Id] = 'searching' }
-    Write-Log "Sterowniki: instalacja $(($list | ForEach-Object { $_.Title }) -join ', ')"
+    Write-Log "Drivers: installing $(($list | ForEach-Object { $_.Title }) -join ', ')"
     try {
         Invoke-Background {
             param($ids, $state)
@@ -128,7 +128,7 @@ function Install-Drivers($list, [hashtable]$state) {
         } @(@($list | ForEach-Object { $_.Id }), $state) | Out-Null
     }
     catch {
-        Write-Log "Sterowniki: blad instalacji: $($_.Exception.Message)"
+        Write-Log "Drivers: install error: $($_.Exception.Message)"
         foreach ($s in $list) { if ($state[$s.Id] -in 'searching', 'waiting') { $state[$s.Id] = 'fail:' + $_.Exception.Message } }
     }
     $n = 0
@@ -136,7 +136,7 @@ function Install-Drivers($list, [hashtable]$state) {
         $w = "$($state[$s.Id])"
         if ($w -like 'fail:*') { $s.State = 'fail'; $s.Error = $w.Substring(5) } else { $s.State = $w }
         if ($s.State -in 'ok', 'restart') { $n++; $s.Selected = $false }
-        Write-Log "Sterownik $($s.Title): $w"
+        Write-Log "Driver $($s.Title): $w"
     }
     $n
 }

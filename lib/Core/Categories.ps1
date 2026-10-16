@@ -1,8 +1,8 @@
 ﻿<#
-    LLMCleaner - biala lista kategorii smieci
+    LLMCleaner - whitelist of junk categories
 #>
 
-# Rozmiar do pokazania (kategorie bez mierzalnego rozmiaru maja '-')
+# Size to display (categories without a measurable size show '-')
 function Test-MeasurableCategory($k) { $k.Type -in 'folder', 'recyclebin', 'thumbnails', 'winold', 'driverstore' -or ($k.Type -in 'docker', 'dockerall' -and $k.Bytes -gt 0) }
 function Format-CategorySize($k) { if (Test-MeasurableCategory $k) { Format-Size $k.Bytes } else { '-' } }
 
@@ -28,7 +28,7 @@ function New-Categories {
     Get-ChildItem "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles" -Directory -Force |
         ForEach-Object { $browserCache += "$($_.FullName)\cache2" }
 
-    # Cache aplikacji - kazda grupa jest pomijana osobno, gdy jej program dziala
+    # App caches - each group is skipped separately while its program is running
     $steam = (Get-ItemProperty "$HKCU\Software\Valve\Steam").SteamPath
     $groups = @(
         @{ Name = 'Discord'; Processes = @('discord'); Paths = @(Get-ElectronCache "$env:APPDATA\discord") }
@@ -44,10 +44,10 @@ function New-Categories {
         }
         @{ Name = 'Battle.net'; Processes = @('battle.net'); Paths = @("$env:LOCALAPPDATA\Battle.net\BrowserCaches", "$env:LOCALAPPDATA\Battle.net\Cache") }
     )
-    # Zostaja tylko aplikacje, ktore sa na tym komputerze
+    # Keep only apps present on this computer
     foreach ($g in $groups) { $g.Paths = @($g.Paths | Where-Object { $_ -and (Test-Path -LiteralPath $_) }) }
     $groups = @($groups | Where-Object { $_.Paths.Count })
-    # IDE JetBrains osobno: po usunieciu indeksow projekty indeksuja sie od nowa (kilka minut)
+    # JetBrains IDEs separately: after deleting indexes projects re-index (a few minutes)
     $jetbrains = @{ Name = 'JetBrains'; Processes = @('phpstorm64', 'webstorm64', 'idea64', 'pycharm64', 'rider64', 'clion64', 'goland64', 'datagrip64', 'rubymine64', 'rustrover64')
         Paths = @(Get-ChildItem "$env:LOCALAPPDATA\JetBrains" -Directory -Force | ForEach-Object { "$($_.FullName)\caches", "$($_.FullName)\index" } | Where-Object { Test-Path -LiteralPath $_ })
     }
@@ -145,9 +145,9 @@ function Get-ThumbnailFiles {
         Where-Object { $_.Name -like 'thumbcache_*.db' -or $_.Name -like 'iconcache_*.db' }
 }
 
-# Starsze wersje sterownikow w magazynie (DriverStore). Pakiety grupujemy po nazwie oryginalnego .inf,
-# dostawcy i klasie; w grupie zostaje najnowsza wersja i kazda uzywana przez urzadzenie. Pozostale usuwa
-# pnputil bez /force, wiec i tak odmowi pakietu w uzyciu. Tak samo dziala DriverStore Explorer.
+# Older driver versions in the DriverStore. Packages are grouped by original .inf name,
+# provider and class; each group keeps the newest version and any used by a device. The rest are removed
+# by pnputil without /force, so it refuses a package in use anyway. DriverStore Explorer works the same way.
 function ConvertTo-DriverVersion($v) { $x = $null; if ([version]::TryParse("$v", [ref]$x)) { $x } else { [version]'0.0' } }
 function Get-OldDrivers {
     $used = @{}
@@ -165,7 +165,7 @@ function Get-OldDrivers {
         foreach ($d in @($newestFirst | Select-Object -Skip 1)) {
             if ($used[$d.Driver.ToLower()]) { continue }
             $folder = Split-Path $d.OriginalFileName -Parent
-            # Zwykla suma: pliki magazynu naleza do systemu, test blokady uznalby je wszystkie za zablokowane
+            # Plain sum: store files belong to the system, the lock test would treat them all as locked
             @{ Inf = $d.Driver; Name = (Split-Path $d.OriginalFileName -Leaf); Provider = $d.ProviderName; Version = $d.Version
                 Folder = $folder; Bytes = [double](Get-AllFiles $folder | Measure-Object Length -Sum).Sum
             }

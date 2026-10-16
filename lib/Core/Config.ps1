@@ -1,20 +1,39 @@
 ﻿<#
-    LLMCleaner - ustawienia programu (strona Ustawienia w oknie), plik %LOCALAPPDATA%\LLMCleaner\ustawienia.json
-    Wczytywane na samym poczatku, przed podniesieniem uprawnien. Parametry z wiersza polecen maja pierwszenstwo.
+    LLMCleaner - program settings (Settings page in the window), file %LOCALAPPDATA%\LLMCleaner\settings.json
+    Loaded at the very start, before elevation. Command-line parameters take precedence.
 #>
 
-$ConfigFile = Join-Path $env:LOCALAPPDATA 'LLMCleaner\ustawienia.json'
+$ConfigFile = Join-Path $env:LOCALAPPDATA 'LLMCleaner\settings.json'
 
-# Pola: Jezyk (auto/pl/en), Motyw (auto/jasny/ciemny), Model, Asystent, Aktualizacje, Podglad
+# Polish values saved by versions before 1.6.4 (theme and page ids)
+$OldPrefValues = @{
+    jasny = 'light'; ciemny = 'dark'; przeglad = 'overview'; analiza = 'analysis'; autostart = 'startup'
+    sterowniki = 'drivers'; czat = 'chat'; ustawienia = 'settings'; czyszczenie = 'cleanup'; dziennik = 'log'
+}
+
+# Reads a JSON settings file into a hashtable. If it does not exist yet, reads the file an older version
+# saved instead, renaming its Polish keys ($oldKeys) and values.
+function Read-PrefsFile([string]$file, [string]$oldFile, [hashtable]$oldKeys) {
+    $old = -not (Test-Path -LiteralPath $file)
+    $path = if ($old) { $oldFile } else { $file }
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try { $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return $null }
+    $h = @{}
+    foreach ($p in $json.PSObject.Properties) {
+        $name = if ($old -and $oldKeys.ContainsKey($p.Name)) { $oldKeys[$p.Name] } else { $p.Name }
+        $value = $p.Value
+        if ($old -and $value -is [string] -and $OldPrefValues.ContainsKey($value)) { $value = $OldPrefValues[$value] }
+        $h[$name] = $value
+    }
+    $h
+}
+
+# Fields: Language (auto/pl/en), Theme (auto/light/dark), Model, Assistant, CheckUpdates, Preview
 function Read-Config {
     $k = [ordered]@{ Language = 'auto'; Theme = ''; Model = ''; Assistant = $true; CheckUpdates = $true; Preview = $false }
-    if (Test-Path -LiteralPath $ConfigFile) {
-        try {
-            $file = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
-            foreach ($p in $file.PSObject.Properties) { if ($k.Contains($p.Name) -and $null -ne $p.Value) { $k[$p.Name] = $p.Value } }
-        }
-        catch { $null = $_ }
-    }
+    $oldKeys = @{ Jezyk = 'Language'; Motyw = 'Theme'; Asystent = 'Assistant'; Aktualizacje = 'CheckUpdates'; Podglad = 'Preview' }
+    $file = Read-PrefsFile $ConfigFile (Join-Path $env:LOCALAPPDATA 'LLMCleaner\ustawienia.json') $oldKeys
+    if ($file) { foreach ($n in $file.Keys) { if ($k.Contains($n) -and $null -ne $file[$n]) { $k[$n] = $file[$n] } } }
     $k
 }
 
@@ -23,7 +42,7 @@ function Save-Config($k) {
     [IO.File]::WriteAllText($ConfigFile, (ConvertTo-Json -InputObject $k), (New-Object Text.UTF8Encoding $false))
 }
 
-# Model wybrany w instalatorze (config.json obok skryptu) albo domyslny
+# Model chosen in the installer (config.json next to the script) or the default
 function Get-InstallerModel {
     $cfg = Join-Path $AppDir 'config.json'
     $m = $null
@@ -31,7 +50,7 @@ function Get-InstallerModel {
     if ($m) { "$m" } else { 'qwen3:4b-instruct' }
 }
 
-# Modele pobrane do ai\models (manifests\registry.ollama.ai\library\qwen3\4b-instruct -> qwen3:4b-instruct)
+# Models downloaded to ai\models (manifests\registry.ollama.ai\library\qwen3\4b-instruct -> qwen3:4b-instruct)
 function Get-LocalModels {
     $man = Join-Path $AppDir 'ai\models\manifests'
     if (-not (Test-Path -LiteralPath $man)) { return @() }

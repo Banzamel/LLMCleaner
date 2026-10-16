@@ -1,16 +1,16 @@
 ﻿<#
-    LLMCleaner - analiza dysku: co zajmuje miejsce, porady stale i AI
+    LLMCleaner - disk analysis: what takes up space, fixed and AI advice
 #>
 
-# Tylko do wgladu - nic stad nie trafia do planu. Skaner w C#, bo petla w PowerShellu
-# przechodzi milion plikow kilka minut. Nie wchodzi w junctions/symlinki, pomija pliki
-# tylko w chmurze (OneDrive). Twarde linki (WinSxS) sa liczone wielokrotnie, jak w Eksploratorze.
+# View only - nothing here goes into the plan. The scanner is in C#, because a PowerShell loop
+# takes minutes over a million files. It does not follow junctions/symlinks and skips cloud-only
+# files (OneDrive). Hard links (WinSxS) are counted multiple times, like in Explorer.
 function Initialize-ScannerType {
     if ('LlmScanner' -as [type]) { return }
     Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $AppDir 'lib\Core\cs\LlmScanner.cs')))
 }
 
-# Znane miejsca - podpowiedz bez modelu
+# Known locations - hint without the model
 $KnownPlaces = @(
     @{ W = '\\Windows\\WinSxS$'; P = (L 'Magazyn komponentów Windows. Zmniejsza go tylko DISM (kategoria w planie); rozmiar zawyżony przez twarde linki.' 'Windows component store. Only DISM shrinks it (a plan category); the size is inflated by hard links.') }
     @{ W = '\\Windows\\Installer$'; P = (L 'Pamięć instalatorów MSI - nie usuwaj ręcznie, psuje odinstalowywanie programów.' 'MSI installer cache - do not delete by hand, it breaks uninstalling programs.') }
@@ -50,7 +50,7 @@ function Invoke-DriveScan([string]$letter) {
     $w = $task.Result
     Complete-Status ((L '   przejrzano {0:N0} plików w {1:N0} s.                 ' '   scanned {0:N0} files in {1:N0} s.                 ') -f $w.FileCount, $timer.Elapsed.TotalSeconds)
 
-    # Najbardziej konkretne duze foldery: bez duzego podfolderu, albo z duza "reszta" poza nimi
+    # Most specific large folders: no large subfolder, or a large "rest" outside them
     $byPath = @{}; foreach ($f in $w.Folders) { $byPath[$f.Path] = $f }
     $largeChildren = @{}
     foreach ($f in $w.Folders) {
@@ -71,14 +71,14 @@ function Invoke-DriveScan([string]$letter) {
     $files = @($w.Files | Sort-Object Bytes -Descending | Select-Object -First 10 | ForEach-Object {
             @{ Type = 'file'; Path = $_.Path; Bytes = [double]$_.Bytes; LastWrite = $_.LastWrite; Hint = (Get-PlaceHint $_.Path) } })
 
-    # Punkty przywracania i kopie w tle - niewidoczne dla skanera (System Volume Information)
+    # Restore points and shadow copies - invisible to the scanner (System Volume Information)
     $shadowBytes = 0.0
     $volume = Get-CimInstance Win32_Volume | Where-Object { $_.DriveLetter -eq "$letter`:" } | Select-Object -First 1
     foreach ($s in Get-CimInstance Win32_ShadowStorage) { if ($volume -and $s.Volume.DeviceID -eq $volume.DeviceID) { $shadowBytes += [double]$s.UsedSpace } }
 
     $i = 0
     foreach ($p in @($folders) + @($files)) { $i++; $p.Id = "A$i" }
-    Write-Log ("Analiza {0}: {1:N0} plikow, {2} folderow, {3} plikow >1GB, odmowy dostepu: {4}" -f $letter, $w.FileCount, $folders.Count, $files.Count, $w.Denied)
+    Write-Log ("Analysis {0}: {1:N0} files, {2} folders, {3} files >1GB, access denied: {4}" -f $letter, $w.FileCount, $folders.Count, $files.Count, $w.Denied)
     @{ Letter = $letter; Size = [double]$d.Size; Free = [double]$d.FreeSpace; ScannedBytes = [double]$w.Bytes
         Folders = $folders; Files = $files; ShadowCopies = $shadowBytes; Threshold = $threshold
     }
@@ -88,12 +88,12 @@ function Get-DriveAnalysis([string]$letter) {
     if (-not $script:Analyses.ContainsKey($letter)) {
         Write-Line ((L '   Skanuję dysk {0}: (zwykle 30 s - 3 min)...' '   Scanning drive {0}: (usually 30 s - 3 min)...') -f $letter) 'DarkGray'
         $script:Analyses[$letter] = Invoke-DriveScan $letter
-        $script:Conversation = $null   # nowe dane dla czatu
+        $script:Conversation = $null   # new data for the chat
     }
     $script:Analyses[$letter]
 }
 
-# Model wybiera rade tylko z tej listy (enum w schemacie) - nie moze doradzic recznego usuwania
+# The model picks advice only from this list (enum in the schema) - it cannot advise manual deletion
 $AnalysisAdvice = if ($Language -eq 'en') {
     @('leave it - part of Windows', 'uninstall in Settings > Apps', 'uninstall the game in its launcher',
         'clean it in the program settings', 'review and move to another drive', 'review the contents manually',
@@ -105,7 +105,7 @@ else {
         'oczyści to kategoria TEMP w planie')
 }
 
-# Foldery systemowe, programow i TEMP: rade ustala program, nie model
+# System, program and TEMP folders: the program sets the advice, not the model
 function Get-FixedAdvice([string]$s) {
     if ($s -match '\\AppData\\Local\\Temp(\\|$)') { return $AnalysisAdvice[6] }
     if ($s -match '^[A-Z]:\\(Windows|ProgramData)(\\|$)' -or $s -match '^[A-Z]:\\[^\\]+\.sys$') { return $AnalysisAdvice[0] }
@@ -118,8 +118,8 @@ $AnalysisSchema = @{
     type       = 'object'
     properties = @{
         items = @{ type = 'array'; items = @{ type = 'object'
-                properties                           = @{ id = @{ type = 'string' }; description = @{ type = 'string' }; advice = @{ type = 'string'; enum = $AnalysisAdvice } }
-                required                             = @('id', 'description', 'advice')
+                properties                         = @{ id = @{ type = 'string' }; description = @{ type = 'string' }; advice = @{ type = 'string'; enum = $AnalysisAdvice } }
+                required                           = @('id', 'description', 'advice')
             }
         }
     }
@@ -130,8 +130,8 @@ $PromptAnalysis = if ($Language -eq 'en') {
     @'
 You are LLMCleaner, a Windows cleanup assistant. You get a list of the largest folders and files on a drive
 (path, size, last change date, sometimes a hint from the program). For EACH item give:
-- "opis": what it is (program, game, user data, cache, part of Windows) - based on the path and the hint,
-- "rada": one of the allowed values - what the user can safely do.
+- "description": what it is (program, game, user data, cache, part of Windows) - based on the path and the hint,
+- "advice": one of the allowed values - what the user can safely do.
 Rules:
 - Everything in C:\Windows, C:\ProgramData and .sys files is part of Windows: "leave it - part of Windows".
 - Games (steamapps, Epic Games) -> "uninstall the game in its launcher"; programs -> "uninstall in Settings > Apps".
@@ -147,8 +147,8 @@ else {
     @'
 Jesteś LLMCleaner - asystentem sprzątania Windows. Dostajesz listę największych folderów i plików na dysku
 (ścieżka, rozmiar, data ostatniej zmiany, czasem podpowiedź programu). Dla KAŻDEJ pozycji podaj:
-- "opis": czym to jest (program, gra, dane użytkownika, cache, część systemu) - na podstawie ścieżki i podpowiedzi,
-- "rada": jedna z dozwolonych wartości - co użytkownik może bezpiecznie zrobić.
+- "description": czym to jest (program, gra, dane użytkownika, cache, część systemu) - na podstawie ścieżki i podpowiedzi,
+- "advice": jedna z dozwolonych wartości - co użytkownik może bezpiecznie zrobić.
 Zasady:
 - Wszystko w C:\Windows, C:\ProgramData i plikach .sys to część systemu: rada "zostaw - część systemu".
 - Gry (steamapps, Epic Games) -> "odinstaluj grę w jej launcherze"; programy -> "odinstaluj w Ustawieniach > Aplikacje".
@@ -161,7 +161,7 @@ Zasady:
 '@
 }
 
-# Opisy i rady modelu dla analizy dysku. Zwraca liczbe opisanych pozycji (albo -1 przy bledzie).
+# Model descriptions and advice for disk analysis. Returns the number of described items (or -1 on error).
 function Invoke-AnalysisAi($a) {
     if (-not (Initialize-Model)) { return -1 }
     $list = @(@($a.Folders) + @($a.Files) | ForEach-Object {
@@ -182,9 +182,9 @@ function Invoke-AnalysisAi($a) {
             }
         }
         Write-Line ((L '   Gotowe - opisano {0} pozycji.' '   Done - {0} items described.') -f $n) 'Green'
-        Write-Log "Analiza - opisy modelu: $answer"
+        Write-Log "Analysis - model descriptions: $answer"
         $script:Conversation = $null
         $n
     }
-    catch { Write-Log "Blad modelu: $($_.Exception.Message)"; Write-Line ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
+    catch { Write-Log "Model error: $($_.Exception.Message)"; Write-Line ((L '   Błąd modelu: {0}' '   Model error: {0}') -f $_.Exception.Message) 'Yellow'; -1 }
 }

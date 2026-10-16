@@ -1,13 +1,13 @@
 ﻿<#
-    LLMCleaner - prywatny serwer Ollama w folderze programu
+    LLMCleaner - private Ollama server in the program folder
 #>
 
 function Test-Ollama {
     try { Invoke-RestMethod "$OllamaUrl/api/version" -TimeoutSec 2 -ErrorAction Stop | Out-Null; $true } catch { $false }
 }
 
-# Job Object z KILL_ON_JOB_CLOSE: serwer (i jego procesy runner) ginie razem z LLMCleanerem,
-# takze gdy okno zostanie zamkniete krzyzykiem
+# Job Object with KILL_ON_JOB_CLOSE: the server (and its runner processes) dies with LLMCleaner,
+# also when the window is closed with the X button
 function Add-ToJob([Diagnostics.Process]$proc) {
     if (-not ('LlmJob' -as [type])) {
         Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $AppDir 'lib\Core\cs\LlmJob.cs')))
@@ -18,7 +18,7 @@ function Add-ToJob([Diagnostics.Process]$proc) {
 function Start-Ollama {
     if (Test-Ollama) { return $true }
     if (-not (Test-Path -LiteralPath $OllamaExe)) { return $false }
-    # Modele i klucze Ollamy zostaja w folderze ai\ - nic nie trafia do profilu uzytkownika
+    # Ollama models and keys stay in the ai\ folder - nothing goes to the user profile
     $psi = New-Object Diagnostics.ProcessStartInfo $OllamaExe, 'serve'
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
@@ -26,7 +26,7 @@ function Start-Ollama {
     $psi.EnvironmentVariables['OLLAMA_MODELS'] = Join-Path $AiDir 'models'
     $psi.EnvironmentVariables['USERPROFILE'] = $AiDir
     $proc = [Diagnostics.Process]::Start($psi)
-    if (-not (Add-ToJob $proc)) { Write-Log 'Job Object: nie udalo sie przypiac serwera' }
+    if (-not (Add-ToJob $proc)) { Write-Log 'Job Object: failed to attach the server' }
     for ($i = 0; $i -lt 40; $i++) { Wait-Responsive 500; if (Test-Ollama) { return $true } }
     $false
 }
@@ -48,7 +48,7 @@ function Invoke-Ollama($messages, $format) {
         param($url, $json)
         try { Invoke-RestMethod $url -Method Post -TimeoutSec 600 -ErrorAction Stop -Body $json -ContentType 'application/json; charset=utf-8' }
         catch {
-            # Ollama opisuje blad w tresci odpowiedzi ({"error": "..."}) - bez niej zostaje samo "(500)"
+            # Ollama describes the error in the response body ({"error": "..."}) - without it only "(500)" remains
             $content = "$($_.ErrorDetails.Message)"
             if (-not $content) { try { $content = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch { $content = '' } }
             if ($content) { throw "$($_.Exception.Message) $content" }
@@ -60,7 +60,7 @@ function Invoke-Ollama($messages, $format) {
     $r.message.content
 }
 
-# Model ladowany dopiero przy pierwszym uzyciu
+# Model is loaded only on first use
 $script:ModelState = $null
 function Initialize-Model {
     if ($NoAI) { Write-Line (L '   Model jest wyłączony (uruchomiono z -BezLLM).' '   The AI model is disabled (started with -BezLLM).') 'Yellow'; return $false }

@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - rysowanie: ksztalty, tekst, pigulki, pola wyboru, przelaczniki, przyciski
+    LLMCleaner - drawing: shapes, text, pills, checkboxes, toggles, buttons
 #>
 
 function New-RoundedPath([Drawing.Rectangle]$r, [int]$radius) {
@@ -31,7 +31,7 @@ function Draw-Line($g, $color, [int]$x1, [int]$y1, [int]$x2, [int]$y2) {
     $pen = New-Object Drawing.Pen($color); $g.DrawLine($pen, $x1, $y1, $x2, $y2); $pen.Dispose()
 }
 
-# Tekst w jednej linii z wielokropkiem; poziom: Left, Right albo HorizontalCenter
+# Single-line text with ellipsis; alignment: Left, Right or HorizontalCenter
 function Draw-Text($g, [string]$t, $font, $color, [int]$x, [int]$y, [int]$w, [int]$h, [string]$align = 'Left') {
     if (-not $t -or $w -le 0) { return }
     [Windows.Forms.TextRenderer]::DrawText($g, $t, $font, (New-Object Drawing.Rectangle($x, $y, $w, $h)), $color,
@@ -46,7 +46,7 @@ function Measure-TextWidth([string]$t, $font) {
     [Windows.Forms.TextRenderer]::MeasureText($t, $font, (New-Object Drawing.Size(9999, 999)), [Windows.Forms.TextFormatFlags]'SingleLine, NoPrefix').Width
 }
 
-# Zaokraglona etykieta (pewnosc, ochrona). Zwraca szerokosc.
+# Rounded pill (confidence, protection). Returns its width.
 function Draw-Pill($g, [string]$t, [int]$x, [int]$midY, $bg, $color, [string]$icon = '') {
     $s = $script:Style
     $iconW = if ($icon -and $s.IconsSmall) { Px 16 } else { 0 }
@@ -59,7 +59,7 @@ function Draw-Pill($g, [string]$t, [int]$x, [int]$midY, $bg, $color, [string]$ic
     $w
 }
 
-# Pole wyboru rysowane (18 px przy 100%)
+# Owner-drawn checkbox (18 px at 100%)
 function Draw-CheckBox($g, [int]$x, [int]$y, [bool]$ticked, [bool]$disabled) {
     $s = $script:Style; $b = Px 18
     if ($ticked) {
@@ -74,7 +74,7 @@ function Draw-CheckBox($g, [int]$x, [int]$y, [bool]$ticked, [bool]$disabled) {
     else { Draw-Rect $g $x $y ($b - 1) ($b - 1) $(if ($disabled) { $s.Disabled } else { $s.Card }) (Px 4) $s.Field }
 }
 
-# Przelacznik jak w Ustawieniach Windows (48 x 28 px przy 100%)
+# Toggle like in Windows Settings (48 x 28 px at 100%)
 function Draw-Toggle($g, [int]$x, [int]$y, [bool]$enabled, [bool]$disabled) {
     $s = $script:Style
     $track = if ($enabled) { $s.Accent } else { $s.ToggleOff }
@@ -85,7 +85,7 @@ function Draw-Toggle($g, [int]$x, [int]$y, [bool]$enabled, [bool]$disabled) {
     Draw-Rect $g $gx ($y + (Px 3)) (Px 22) (Px 22) $knob (Px 11)
 }
 
-# Przycisk o stalej szerokosci rosnie, gdy napis by sie nie zmiescil (zamiast ucinac go wielokropkiem)
+# A fixed-width button grows when its text would not fit (instead of cutting it with an ellipsis)
 function Resize-ToText($b) {
     if ("$($b.Dock)" -in 'Fill', 'Top', 'Bottom' -or -not $b.Text) { return }
     $min = (Measure-TextWidth $b.Text $b.Font) + (Px 32)

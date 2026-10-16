@@ -1,8 +1,8 @@
 ﻿<#
-    LLMCleaner - aktualizacje programu z GitHuba
+    LLMCleaner - program updates from GitHub
 #>
 
-# Jedno zapytanie do GitHuba przy starcie (bez danych o komputerze); wylacza je -BezAktualizacji.
+# One request to GitHub at startup (no data about the computer); -NoUpdateCheck turns it off.
 $Repo = 'Banzamel/LLMCleaner'
 $script:AppUpdate = $null
 
@@ -16,13 +16,13 @@ function Find-AppUpdate {
         if ($newVersion -le [version]$Version) { return }
         $setup = $r.assets | Where-Object { $_.name -like 'LLMCleaner-Setup-*.exe' } | Select-Object -First 1
         $script:AppUpdate = @{ Version = "$newVersion"; Page = $r.html_url; Installer = $setup.browser_download_url; Name = $setup.name }
-        Write-Log "Dostepna aktualizacja: $newVersion"
+        Write-Log "Update available: $newVersion"
     }
-    catch { Write-Log "Sprawdzanie aktualizacji: $($_.Exception.Message)" }
+    catch { Write-Log "Update check: $($_.Exception.Message)" }
 }
 
-# Pobiera instalator i uruchamia go jako zwykly uzytkownik (przez Eksplorator), zeby
-# aktualizacja trafila w ten sam tryb instalacji co poprzednio. Zwraca $true, gdy wystartowal.
+# Downloads the installer and runs it as a normal user (via Explorer) so the update
+# lands in the same install mode as before. Returns $true when it started.
 function Install-AppUpdate {
     $a = $script:AppUpdate
     $isInstalled = Test-Path -LiteralPath (Join-Path $AppDir 'unins000.exe')
@@ -40,7 +40,7 @@ function Install-AppUpdate {
         } @($a.Installer, $file) | Out-Null
     }
     catch { Write-Line ((L '   Nie udało się pobrać: {0}' '   Download failed: {0}') -f $_.Exception.Message) 'Yellow'; return $false }
-    Write-Log "Aktualizacja: uruchamiam $file"
+    Write-Log "Update: starting $file"
     Start-Process explorer.exe -ArgumentList "`"$file`""
     $true
 }

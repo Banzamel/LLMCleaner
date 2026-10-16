@@ -1,12 +1,12 @@
 ﻿<#
-    LLMCleaner - martwe wpisy startowe, menedzer autostartu i opisy AI wpisow
+    LLMCleaner - dead startup entries, startup manager and AI descriptions of entries
 #>
 
-# Programy uruchamiane przy logowaniu. Niczego tu nie usuwamy: wpisy Run i folderu Autostart wylaczamy
-# tak jak Menedzer zadan (wartosc w StartupApproved, nieparzysty pierwszy bajt = wylaczony), zadania
-# Harmonogramu - Disable-ScheduledTask. Wlaczenie przywraca dokladnie poprzedni stan.
+# Programs started at sign-in. Nothing is deleted here: Run and Startup folder entries are disabled
+# like Task Manager does (value in StartupApproved, odd first byte = disabled), Task Scheduler
+# tasks via Disable-ScheduledTask. Enabling restores exactly the previous state.
 
-# Ochrona, sterowniki i panele sprzetu: wylaczenie potrafi zepsuc touchpad, dzwiek albo ochrone
+# Security, drivers and hardware panels: disabling them can break the touchpad, sound or protection
 $ProtectedStartup = @('securityhealth*', '*defender*', 'msmpeng*', '*antivirus*', 'avast*', 'avg*', 'egui*', 'eset*',
     'avp*', 'kaspersky*', 'bdagent*', 'bitdefender*', 'norton*', 'mcafee*', 'mbam*', 'malwarebytes*', 'sophos*',
     'rthdvcpl*', 'rtkaud*', 'rtkngui*', 'realtek*', 'igfx*', 'synaptics*', 'syntp*', 'etdctrl*', 'elan*', 'waves*',
@@ -26,14 +26,14 @@ function Get-StartupProtection($w) {
 
 function Complete-StartupEntry([hashtable]$w) {
     $w.Exists = [bool]($w.File -and (Test-Path -LiteralPath $w.File))
-    # Martwy tak samo jak w planie (MartweAutostarty): pusty cel skrotu MSI albo sciezka bez dysku to nie martwy wpis
+    # Dead the same way as in the plan (Find-DeadStartupEntries): an empty MSI shortcut target or a path without a drive is not dead
     if ($null -eq $w.Dead) { $w.Dead = [bool](Test-MissingFile $w.File) }
     $w.Publisher = if ($w.Exists) { (Get-Item -LiteralPath $w.File -Force).VersionInfo.CompanyName } else { '' }
     $w.Protected = Get-StartupProtection $w
     $w
 }
 
-# Wylaczony przez uzytkownika (Menedzer zadan, Ustawienia > Aplikacje > Uruchamianie albo LLMCleaner)
+# Disabled by the user (Task Manager, Settings > Apps > Startup or LLMCleaner)
 function Test-StartupApproved([string]$key, [string]$name) {
     $b = (Get-ItemProperty -LiteralPath "Registry::$key" -Name $name).$name
     -not ($b -is [byte[]] -and $b.Length -and ($b[0] -band 1))
@@ -83,12 +83,12 @@ function Get-StartupEntries {
                         Source = (L 'Harmonogram zadań' 'Task Scheduler'); IsEnabled = ($t.State -ne 'Disabled')
                     }))
         }
-        catch { Add-ScanError "zadanie $($t.TaskPath)$($t.TaskName)" $_ }
+        catch { Add-ScanError "task $($t.TaskPath)$($t.TaskName)" $_ }
     }
     $n = 0; foreach ($w in $startupList) { $n++; $w.Id = "S$n" }
-    Write-Log ("Autostart: {0} wpisow, wlaczonych {1}" -f $startupList.Count, @($startupList | Where-Object { $_.IsEnabled }).Count)
+    Write-Log ("Startup: {0} entries, {1} enabled" -f $startupList.Count, @($startupList | Where-Object { $_.IsEnabled }).Count)
     $script:Startup = $startupList.ToArray()
-    $script:Conversation = $null   # nowe dane dla czatu
+    $script:Conversation = $null   # new data for the chat
     $script:Startup
 }
 
@@ -101,11 +101,11 @@ function Set-StartupEnabled($w, [bool]$enable) {
     else { Set-StartupApproved $w.ApprovedKey $w.ApprovedName $enable }
     $w.IsEnabled = $enable
     $script:Conversation = $null
-    Write-Log ("Autostart {0}: {1} ({2}, {3})" -f $(if ($enable) { 'wlaczony' } else { 'wylaczony' }), $w.Name, $w.Source, $w.Command)
+    Write-Log ("Startup {0}: {1} ({2}, {3})" -f $(if ($enable) { 'enabled' } else { 'disabled' }), $w.Name, $w.Source, $w.Command)
 }
 
-# Usuwa wpis autostartu na stale, z kopia: wartosc Run - .reg, skrot - do Kosza, zadanie - .xml.
-# Zwraca opis, gdzie jest kopia.
+# Removes a startup entry permanently, with a backup: Run value - .reg, shortcut - Recycle Bin, task - .xml.
+# Returns a description of where the backup is.
 function Remove-StartupEntry($w) {
     if ($w.Protected) { throw ((L '{0}: nie usuwam ({1})' '{0}: not removed ({1})') -f $w.Name, $w.Protected) }
     $backups = Join-Path $LogDir ("kopie_rejestru\{0}" -f (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
@@ -133,16 +133,16 @@ function Remove-StartupEntry($w) {
             $backupPlace = $file
         }
     }
-    # Stan wl./wyl. z Menedzera zadan nie jest juz potrzebny
+    # The Task Manager on/off state is no longer needed
     if ($w.ApprovedKey) { Remove-ItemProperty -LiteralPath "Registry::$($w.ApprovedKey)" -Name $w.ApprovedName -Force }
     $script:Startup = @($script:Startup | Where-Object { $_ -ne $w })
     $script:Conversation = $null
-    Write-Log ("Autostart usuniety: {0} ({1}, {2}), kopia: {3}" -f $w.Name, $w.Source, $w.Command, $backupPlace)
+    Write-Log ("Startup entry removed: {0} ({1}, {2}), backup: {3}" -f $w.Name, $w.Source, $w.Command, $backupPlace)
     $backupPlace
 }
 
-# Kopia jednej wartosci rejestru jako .reg - dwuklik przywraca tylko ja, a nie caly klucz Run.
-# Nietypowe rodzaje (binarne, liczby) eksportuje reg.exe razem z kluczem.
+# Backs up one registry value as .reg - a double-click restores only it, not the whole Run key.
+# Unusual types (binary, numbers) are exported by reg.exe together with the key.
 function Backup-RegistryValue([string]$key, [string]$name, [string]$file) {
     $k = Get-Item -LiteralPath "Registry::$key" -ErrorAction Stop
     $kind = $k.GetValueKind($name)

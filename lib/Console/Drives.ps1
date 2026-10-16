@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - wybor dyskow
+    LLMCleaner - drive selection
 #>
 
 function Select-DrivesConsole {

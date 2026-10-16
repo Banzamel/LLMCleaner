@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - strona Dziennik
+    LLMCleaner - log page
 #>
 
 function New-LogPage {

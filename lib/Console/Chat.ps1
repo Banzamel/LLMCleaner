@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - czat z asystentem
+    LLMCleaner - chat with the assistant
 #>
 
 function Invoke-ChatConsole {

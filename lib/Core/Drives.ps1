@@ -1,13 +1,13 @@
 ﻿<#
-    LLMCleaner - wybor dyskow do skanowania
+    LLMCleaner - choosing drives to scan
 #>
 
-# Lokalne dyski stale z litera. Pomijane: USB/karty (DriveType 2), sieciowe (4), CD (5), partycje bez litery
-# (EFI, Recovery) i woluminy niedostepne, np. zablokowane BitLockerem (brak rozmiaru).
+# Local fixed drives with a letter. Skipped: USB/cards (DriveType 2), network (4), CD (5), partitions without a letter
+# (EFI, Recovery) and unavailable volumes, e.g. locked by BitLocker (no size).
 function Get-FixedDrives { Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Where-Object { $_.Size -gt 0 } }
 
-# Dyski wybrane przez uzytkownika. Dysk systemowy jest zawsze skanowany (cache Windows, profil,
-# Program Files); pozostale wplywaja na Kosz, biblioteki Steam/Epic i analize miejsca.
+# Drives chosen by the user. The system drive is always scanned (Windows cache, profile,
+# Program Files); the others affect the Recycle Bin, Steam/Epic libraries and space analysis.
 $script:SelectedDrives = @($Sys)
 function Get-SelectedDrives { Get-FixedDrives | Where-Object { $_.DeviceID -in $script:SelectedDrives } }
 function Test-OnSelectedDrive([string]$p) { $p.Length -ge 2 -and $p.Substring(0, 2).ToUpper() -in $script:SelectedDrives }
@@ -21,5 +21,5 @@ function Format-Drive($d) {
     (L '{0} {1} - wolne {2} z {3}' '{0} {1} - {2} free of {3}') -f $d.DeviceID, $name, (Format-Size $d.FreeSpace), (Format-Size $d.Size)
 }
 
-# Kosz uzytkownika na kazdym wybranym dysku: X:\$Recycle.Bin\<SID>
+# User's Recycle Bin on each selected drive: X:\$Recycle.Bin\<SID>
 function Get-RecycleBinFolders { foreach ($d in Get-SelectedDrives) { $p = "$($d.DeviceID)\`$Recycle.Bin\$UserSid"; if (Test-Path -LiteralPath $p) { $p } } }

@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - strona Autostart
+    LLMCleaner - startup page
 #>
 
 $InitialColors = @('#5865F2', '#0A64AD', '#1A7F3C', '#B30B00', '#7C3AED', '#C2410C', '#0F766E', '#BE185D')
@@ -36,7 +36,7 @@ function Draw-StartupRow($g, $w, $r, [bool]$hover) {
     if ($line3) { Draw-Text $g $line3.T $s.Small $line3.K $xName ($mid + (Px 11)) $nameW (Px 20) }
     Draw-Text $g $a.Source $s.Small $s.TextDim $xSource ($mid - (Px 11)) (Px 170) (Px 22)
     Draw-Toggle $g $xToggle ($mid - (Px 14)) ([bool]$a.IsEnabled) ([bool]$a.Protected -or [bool]$Preview)
-    # Usuniecie wpisu na stale (z kopia) - tylko dla niechronionych
+    # Permanent removal of an entry (with backup) - unprotected only
     if (-not $a.Protected -and -not $Preview) {
         $col = if ($a.Dead) { $s.Warning } else { $s.TextDim }
         if ($hover) { Draw-Rect $g $xBin ($mid - (Px 16)) (Px 32) (Px 32) $s.Tile (Px 8) }
@@ -57,7 +57,7 @@ function Draw-StartupSummary($g, $p) {
     Draw-TilesWithNote $g $p $data $t
 }
 
-# Kafelki z liczbami i notka obok (strony Autostart i Sterowniki)
+# Number tiles with a note beside them (startup and drivers pages)
 function Draw-TilesWithNote($g, $p, $data, [string]$t) {
     $s = $script:Style
     $width = Px 200; $gap = Px 12; $h = $p.Height - 1
@@ -86,7 +86,7 @@ function Update-StartupPage {
     if ($script:Scanned) { Update-Overview }
 }
 
-# Przelacznik w wierszu: dziala od razu, jak w Menedzerze zadan (wylaczenie niczego nie usuwa)
+# Row toggle: applies immediately, like in Task Manager (disabling deletes nothing)
 function Switch-StartupRow($a) {
     if ($script:Working) { return }
     if ($Preview) { Set-WindowStatus (L 'Tryb podglądu - autostart się nie zmienia.' 'Preview mode - startup apps are not changed.'); return }
@@ -99,7 +99,7 @@ function Switch-StartupRow($a) {
         Set-WindowStatus ((L '{0}: autostart {1}. Zmiana działa od następnego logowania.' '{0}: startup {1}. It takes effect at the next sign-in.') -f $a.Name, $state)
     }
     catch {
-        Write-Log "Autostart - blad $($a.Name): $($_.Exception.Message)"
+        Write-Log "Startup - error $($a.Name): $($_.Exception.Message)"
         Show-Message ((L 'Nie udało się zmienić {0}: {1}' 'Could not change {0}: {1}') -f $a.Name, $_.Exception.Message) 'Warning'
     }
     $script:UI.LvStartup.Invalidate()
@@ -108,7 +108,7 @@ function Switch-StartupRow($a) {
     if ($script:Scanned) { Update-Overview }
 }
 
-# Usuniecie wpisu na stale, po potwierdzeniu. Kopia .reg / .xml albo skrot w Koszu.
+# Permanent removal of an entry, after confirmation. Backup as .reg / .xml, or the shortcut goes to the Recycle Bin.
 function Remove-StartupRow($a) {
     if ($script:Working -or $Preview -or $a.Protected) { return }
     $backupNote = switch ($a.Kind) { 'folder' { L 'Skrót trafi do Kosza.' 'The shortcut goes to the Recycle Bin.' } 'task' { L 'Zadanie dostanie kopię .xml (Harmonogram zadań > Importuj zadanie przywraca je).' 'The task gets an .xml backup (Task Scheduler > Import Task restores it).' } default { L 'Wpis dostanie kopię .reg (dwuklik na niej przywraca wpis).' 'The entry gets a .reg backup (double-clicking it restores the entry).' } }
@@ -121,7 +121,7 @@ function Remove-StartupRow($a) {
         Set-WindowStatus ((L '{0}: usunięty z autostartu. Kopia: {1}' '{0}: removed from startup. Backup: {1}') -f $a.Name, $backupPlace)
     }
     catch {
-        Write-Log "Autostart - blad usuwania $($a.Name): $($_.Exception.Message)"
+        Write-Log "Startup - removal error $($a.Name): $($_.Exception.Message)"
         Show-Message ((L 'Nie udało się usunąć {0}: {1}' 'Could not remove {0}: {1}') -f $a.Name, $_.Exception.Message) 'Warning'
     }
     Update-StartupPage

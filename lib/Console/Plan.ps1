@@ -1,5 +1,5 @@
 ﻿<#
-    LLMCleaner - plan czyszczenia
+    LLMCleaner - cleanup plan
 #>
 
 function Show-Plan {

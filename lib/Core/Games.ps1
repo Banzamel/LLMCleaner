@@ -14,7 +14,7 @@ function Get-SteamLibraries {
     $libraries | Sort-Object -Unique
 }
 
-# Nazwy zainstalowanych gier Steam (z manifestow) - zeby nie brac ich ustawien za pozostalosci
+# Names of installed Steam games (from manifests) - so their settings aren't taken for leftovers
 function Get-SteamGames {
     foreach ($b in Get-SteamLibraries) {
         foreach ($acf in Get-ChildItem -LiteralPath "$b\steamapps" -Filter 'appmanifest_*.acf') {
@@ -53,21 +53,21 @@ function Find-OrphanedSteamGames {
     }
 }
 
-# Gra z Epic Games Launcher ma w swoim folderze podfolder .egstore. Folder nadrzedny gry (np. G:\ albo
-# Program Files) NIE jest biblioteka Epic - stoja w nim zwykle inne programy i gry. Dlatego folder spoza
-# folderu "Epic Games" trafia na liste tylko wtedy, gdy ma .egstore, a korzen dysku nigdy nie jest traktowany
-# jak biblioteka (wczesniej regula proponowala do usuniecia cale G:\Steam czy P:\Git).
+# An Epic Games Launcher game has an .egstore subfolder. The game's parent folder (e.g. G:\ or
+# Program Files) is NOT an Epic library - it usually holds other programs and games. So a folder outside
+# "Epic Games" is listed only if it has .egstore, and a drive root is never treated
+# as a library (previously the rule suggested deleting all of G:\Steam or P:\Git).
 function Find-OrphanedEpicGames {
     $man = "$env:ProgramData\Epic\EpicGamesLauncher\Data\Manifests"
     if (-not (Test-Path -LiteralPath $man)) { return }
     $installed = @{}; $parents = @{ "$env:ProgramFiles\Epic Games".ToLower() = 1 }
     foreach ($i in Get-ChildItem -LiteralPath $man -Filter *.item) {
-        try { $loc = (Get-Content -LiteralPath $i.FullName -Raw | ConvertFrom-Json).InstallLocation } catch { Add-ScanError "manifest Epic $($i.Name)" $_; continue }
+        try { $loc = (Get-Content -LiteralPath $i.FullName -Raw | ConvertFrom-Json).InstallLocation } catch { Add-ScanError "Epic manifest $($i.Name)" $_; continue }
         if (-not $loc) { continue }
         $loc = $loc.Replace('/', '\').TrimEnd('\').ToLower()
         $installed[$loc] = 1
         $r = Split-Path $loc -Parent
-        if ($r) { $parents[$r] = 1 }   # korzen zostaje jako G:\ (samo G: to biezacy folder dysku)
+        if ($r) { $parents[$r] = 1 }   # root stays as G:\ (bare G: means the drive's current folder)
     }
     $script:EpicInstalled = @($installed.Keys)
     foreach ($r in @($parents.Keys | Where-Object { Test-OnSelectedDrive $_ })) {
