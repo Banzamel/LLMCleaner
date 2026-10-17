@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.6 (2026-10-17)
+
+- **Overview:** after a scan, three tiles next to the result: *Safe to delete*, *To review* and *Large files and
+  folders*, each with its size and item count. A click opens the plan on the matching tab and filter.
+- **Cleanup plan:** each item has a type icon (cache, folder, file, shortcut, task, registry) instead of a text
+  badge. Groups start collapsed, showing only the header, item count and selected total; a click on the header
+  expands one. A search shows all matches expanded.
+- **After cleaning:** free space before and after as two bars, and a *Previous cleanups* card with the last five
+  runs (kept in `%LOCALAPPDATA%\LLMCleaner\history.json`).
+- **Readability:** stronger secondary text in both themes, and text half a point larger in the dark theme.
+- **Page descriptions** moved behind an *i* next to the page title; a click shows the full text. The line under the
+  title now only shows status, such as the last scan.
+
 ## 1.6.5 (2026-10-17)
 
 - **Spanish.** The window, the text mode, the AI answers and the installer are now also in Spanish. The language can

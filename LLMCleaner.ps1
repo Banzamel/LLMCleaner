@@ -39,7 +39,7 @@ param(
     [string]$Sid      # account that started the program (set by elevation)
 )
 
-$Version = '1.6.5'
+$Version = '1.6.6'
 $ErrorActionPreference = 'SilentlyContinue'
 $AppDir = $PSScriptRoot
 
@@ -85,7 +85,7 @@ $CoreFiles = @(
     'Core\Output.ps1', 'Core\User.ps1', 'Core\Common.ps1', 'Core\Files.ps1', 'Core\Categories.ps1', 'Core\Drives.ps1',
     'Core\Scanner.ps1', 'Core\Leftovers.ps1', 'Core\Games.ps1', 'Core\StartupDead.ps1', 'Core\LeftoverScan.ps1',
     'Core\Startup.ps1', 'Core\StartupAi.ps1', 'Core\Plan.ps1', 'Core\Ollama.ps1', 'Core\Assistant.ps1',
-    'Core\DiskAnalysis.ps1', 'Core\Updates.ps1', 'Core\Drivers.ps1', 'Core\Cleanup.ps1'
+    'Core\DiskAnalysis.ps1', 'Core\Updates.ps1', 'Core\Drivers.ps1', 'Core\History.ps1', 'Core\Cleanup.ps1'
 )
 $GuiFiles = @(
     'Gui\Base.ps1', 'Gui\Theme.ps1', 'Gui\Output.ps1', 'Gui\Drawing.ps1', 'Gui\Controls.ps1', 'Gui\List.ps1',

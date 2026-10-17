@@ -115,15 +115,17 @@ deletes anything, and *LLMCleaner (console)* for the text mode.
 The pages are in the navigation bar on the left.
 
 1. **Overview**: tick the drives to scan (each row shows how full the drive is) and click **Scan** (or press **F5**).
-   Afterwards the page shows how much space can be freed, a chart of what takes it up and how many programs start
-   with Windows, with **View the cleanup plan** and **Clean now...**.
-2. **Cleanup plan**: the box on the left ticks or unticks an item, a click on its name shows the full description,
+   Afterwards the page shows how much space can be freed, three tiles (*Safe to delete*, *To review*, *Large files and
+   folders*) that open the matching part of the plan, a chart of what takes it up and how many programs start with
+   Windows, with **View the cleanup plan** and **Clean now...**. The *i* next to each page title explains the page.
+2. **Cleanup plan**: groups start collapsed with their total; click a header to expand one. Each item has a type icon.
+   The box on the left ticks or unticks an item, a click on its name shows the full description,
    and a click on a column header (name, size, confidence) sorts the list. Large folders and files (over 1 GB) are in
    their own tab, **Large files and folders**, and are never ticked in advance. Search and the
    *All / Selected / Opt-in* filter narrow the list, and **Select recommended** brings back the default plan.
    - **AI: what were the leftovers?** fills in what each leftover was (marked *AI (may be wrong)*),
    - **Clean selected...** shows a summary and asks for confirmation. A progress screen then shows every step, and
-     the result: space freed, free space before and after, backups and the restore point.
+     the result: space freed, free space before and after as bars, backups, the restore point and the last five cleanups.
 3. **What takes up space**: pick a drive, click **Analyse**, then **AI: describe and advise**. Double-click an
    item to open it in File Explorer.
 4. **Startup apps**: the switch on each row turns a program on or off at once, like in Task Manager. Protected items
