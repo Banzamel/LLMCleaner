@@ -15,6 +15,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check PowerShell syntax
         shell: powershell
@@ -35,8 +37,8 @@ jobs:
         run: |
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             $v = $env:GITHUB_REF_NAME.TrimStart('v')
-            $inScript = [regex]::Match((Get-Content LLMCleaner.ps1 -Raw), "\`$Wersja = '([^']+)'").Groups[1].Value
-            if ($inScript -ne $v) { Write-Host "::error::Tag v$v does not match `$Wersja = '$inScript' in LLMCleaner.ps1"; exit 1 }
+            $inScript = [regex]::Match((Get-Content LLMCleaner.ps1 -Raw), "\`$Version = '([^']+)'").Groups[1].Value
+            if ($inScript -ne $v) { Write-Host "::error::Tag v$v does not match `$Version = '$inScript' in LLMCleaner.ps1"; exit 1 }
           } else {
             $v = '0.0.0-dev'
           }
@@ -66,11 +68,17 @@ jobs:
         if: github.ref_type == 'tag'
         shell: powershell
         run: |
-          $v = [regex]::Escape('${{ steps.version.outputs.version }}')
+          $v = [version]'${{ steps.version.outputs.version }}'
+          # Versions that were never released get their notes in this release too
+          $prev = git tag --list 'v*' | ForEach-Object { [version]$_.TrimStart('v') } | Where-Object { $_ -lt $v } |
+            Sort-Object -Descending | Select-Object -First 1
           $log = [IO.File]::ReadAllText('CHANGELOG.md')
-          $m = [regex]::Match($log, "(?ms)^## $v\b.*?\r?\n(.*?)(?=^## |\z)")
-          if (-not $m.Success) { Write-Host "::error::CHANGELOG.md has no section for $v"; exit 1 }
-          [IO.File]::WriteAllText("$pwd\release-notes.md", $m.Groups[1].Value.Trim())
+          $sections = [regex]::Matches($log, "(?ms)^## (\d+\.\d+\.\d+)\b[^\r\n]*\r?\n(.*?)(?=^## |\z)") |
+            Where-Object { $sv = [version]$_.Groups[1].Value; $sv -le $v -and (-not $prev -or $sv -gt $prev) }
+          if (-not ($sections | Where-Object { [version]$_.Groups[1].Value -eq $v })) { Write-Host "::error::CHANGELOG.md has no section for $v"; exit 1 }
+          if (@($sections).Count -eq 1) { $notes = @($sections)[0].Groups[2].Value.Trim() }
+          else { $notes = (@($sections) | ForEach-Object { $_.Value.Trim() }) -join "`n`n" }
+          [IO.File]::WriteAllText("$pwd\release-notes.md", $notes)
 
       - uses: actions/upload-artifact@v4
         with:
