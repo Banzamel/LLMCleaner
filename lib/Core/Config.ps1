@@ -28,9 +28,12 @@ function Read-PrefsFile([string]$file, [string]$oldFile, [hashtable]$oldKeys) {
     $h
 }
 
-# Fields: Language (auto/pl/en), Theme (auto/light/dark), Model, Assistant, CheckUpdates, Preview
+# Fields: Language (auto/pl/en/es), Theme (auto/light/dark), Model, Assistant, CheckUpdates, Preview,
+# scan scope: SkipCategories (category ids), ScanLeftovers, ScanLargeFiles, ExcludedFolders (paths);
+# LogDays - run logs older than that are deleted at startup (0 = keep all)
 function Read-Config {
-    $k = [ordered]@{ Language = 'auto'; Theme = ''; Model = ''; Assistant = $true; CheckUpdates = $true; Preview = $false }
+    $k = [ordered]@{ Language = 'auto'; Theme = ''; Model = ''; Assistant = $true; CheckUpdates = $true; Preview = $false
+        SkipCategories = @(); ScanLeftovers = $true; ScanLargeFiles = $true; ExcludedFolders = @(); LogDays = 30 }
     $oldKeys = @{ Jezyk = 'Language'; Motyw = 'Theme'; Asystent = 'Assistant'; Aktualizacje = 'CheckUpdates'; Podglad = 'Preview' }
     $file = Read-PrefsFile $ConfigFile (Join-Path $env:LOCALAPPDATA 'LLMCleaner\ustawienia.json') $oldKeys
     if ($file) { foreach ($n in $file.Keys) { if ($k.Contains($n) -and $null -ne $file[$n]) { $k[$n] = $file[$n] } } }

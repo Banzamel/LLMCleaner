@@ -24,6 +24,34 @@ function Write-Log($t) {
     Add-Content -LiteralPath $LogFile -Value ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $t) -Encoding UTF8
 }
 
+# Run logs older than $days (all of them with 0), never the current one. Registry backups stay.
+function Remove-OldLogs([int]$days = 0) {
+    $cutoff = (Get-Date).AddDays(-$days)
+    $old = @(Get-ChildItem -LiteralPath $LogDir -Filter 'LLMCleaner_*.log' -File -Force |
+            Where-Object { $_.FullName -ne $LogFile -and ($days -le 0 -or $_.LastWriteTime -lt $cutoff) })
+    $n = 0
+    foreach ($f in $old) { try { $f.Delete(); $n++ } catch { } }
+    $n
+}
+if ([int]$Config.LogDays -gt 0) { $n = Remove-OldLogs ([int]$Config.LogDays); if ($n) { Write-Log "Deleted $n logs older than $($Config.LogDays) days." } }
+
+# Folders excluded in Settings: never measured, listed or deleted. Stored with a trailing \ for prefix checks.
+$script:ExcludedFolders = @(foreach ($f in @($Config.ExcludedFolders)) { $t = "$f".Trim().TrimEnd('\'); if ($t) { "$t\" } })
+# Path is an excluded folder or lies inside one
+function Test-Excluded([string]$path) {
+    if (-not $script:ExcludedFolders.Count -or -not $path) { return $false }
+    $p = $path.TrimEnd('\') + '\'
+    foreach ($e in $script:ExcludedFolders) { if ($p.StartsWith($e, [StringComparison]::OrdinalIgnoreCase)) { return $true } }
+    $false
+}
+# Deleting the whole folder would also take an excluded folder inside it
+function Test-HoldsExcluded([string]$path) {
+    if (-not $script:ExcludedFolders.Count -or -not $path) { return $false }
+    $p = $path.TrimEnd('\') + '\'
+    foreach ($e in $script:ExcludedFolders) { if ($e.StartsWith($p, [StringComparison]::OrdinalIgnoreCase)) { return $true } }
+    $false
+}
+
 # A scan item that can't be read (odd folder, registry entry, broken shortcut) is skipped
 # instead of aborting the whole scan. Details with the error location go to the log.
 $script:ScanErrors = 0

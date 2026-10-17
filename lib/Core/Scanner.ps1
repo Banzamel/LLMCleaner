@@ -134,15 +134,19 @@ function Invoke-FullScan {
     Write-Log "Drives: $($script:SelectedDrives -join ', '), user: $UserSid$(if ($OtherUser) { ' (different account than administrator)' })"
     $script:ScanErrors = 0
     $script:FreeBefore = Get-SystemFreeSpace
-    try { $script:Categories = @(New-Categories) } catch { Add-ScanError 'categories' $_; $script:Categories = @() }
+    try { $script:Categories = @(New-Categories | Where-Object { $_.Id -notin @($Config.SkipCategories) }) } catch { Add-ScanError 'categories' $_; $script:Categories = @() }
     Measure-Categories
     Write-Line (L '   Przeglądam profil użytkownika (duże pliki, AppData)...' '   Scanning the user profile (large files, AppData)...') 'DarkGray'
     try { $script:ProfileScan = Invoke-ProfileScan }
     catch { Add-ScanError 'profile' $_; $script:ProfileScan = @{ Candidates = @(); Profile = @(); AppData = @(); Programs = @(); System = @{}; Drives = @() } }
-    Write-Line (L '   Szukam pozostałości po odinstalowanych programach i grach...' '   Looking for leftovers of uninstalled programs and games...') 'DarkGray'
-    try { $leftoverList = @(Find-Leftovers) } catch { Add-ScanError 'leftovers' $_; $leftoverList = @() }
+    $leftoverList = @()
+    if ($Config.ScanLeftovers -ne $false) {
+        Write-Line (L '   Szukam pozostałości po odinstalowanych programach i grach...' '   Looking for leftovers of uninstalled programs and games...') 'DarkGray'
+        try { $leftoverList = @(Find-Leftovers | Where-Object { -not $_.Path -or $_.Type -notin 'folder', 'file' -or -not ((Test-Excluded $_.Path) -or (Test-HoldsExcluded $_.Path)) }) }
+        catch { Add-ScanError 'leftovers' $_ }
+    }
     # Large files from Downloads and outside AppData - the user decides, never preselected
-    foreach ($c in $script:ProfileScan.Candidates) {
+    foreach ($c in $(if ($Config.ScanLargeFiles -ne $false) { $script:ProfileScan.Candidates })) {
         $leftoverList += @{ Type = 'file'; Path = $c.Path; Name = (Split-Path $c.Path -Leaf); Bytes = $c.Bytes
             LastWrite = $c.Modified; Confidence = 'low'; LargeFile = $true
             Reason = $(if ($c.InDownloads) { L 'Duży plik w Pobranych - stary instalator albo archiwum?' 'Large file in Downloads - an old installer or archive?' }
