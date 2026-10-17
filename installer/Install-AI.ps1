@@ -10,7 +10,7 @@
 #>
 param(
     [string]$Model = 'qwen3:4b-instruct',
-    [ValidateSet('en', 'pl')][string]$Lang = 'en',
+    [ValidateSet('en', 'pl', 'es')][string]$Lang = 'en',
     [string]$AppDir = $PSScriptRoot
 )
 
@@ -35,6 +35,11 @@ $T = @{
         Down = 'Pobieram silnik AI (Ollama, ok. 1,4 GB)'; Unpack = 'Rozpakowuję...'; Start = 'Uruchamiam silnik AI...'
         Pull = 'Pobieram model {0} (ok. 2,5-5 GB, to może chwilę potrwać)...'; Ok = 'Gotowe. Asystent AI jest gotowy.'
         Fail = 'Instalacja AI nie powiodła się: {0}'; Later = 'LLMCleaner działa bez AI. Ten skrypt możesz uruchomić później:'; Key = 'Enter zamyka okno'
+    }
+    es = @{ Title = 'LLMCleaner - instalación del asistente de IA'; Dir = 'Carpeta'; Have = 'El motor de IA (Ollama) ya está instalado.'
+        Down = 'Descargando el motor de IA (Ollama, unos 1,4 GB)'; Unpack = 'Descomprimiendo...'; Start = 'Iniciando el motor de IA...'
+        Pull = 'Descargando el modelo {0} (unos 2,5-5 GB, puede tardar un rato)...'; Ok = 'Listo. El asistente de IA está preparado.'
+        Fail = 'La instalación de la IA ha fallado: {0}'; Later = 'LLMCleaner funciona sin IA. Puedes volver a ejecutar este script más tarde:'; Key = 'Pulsa Enter para cerrar'
     }
 }[$Lang]
 

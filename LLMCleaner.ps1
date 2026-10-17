@@ -23,7 +23,7 @@
       -NoAI             turns off the AI assistant (alias -BezLLM)
       -Model            Ollama model (default from config.json next to the script, else qwen3:4b-instruct)
       -Drives           drives to scan, e.g. -Drives C,P (alias -Dyski)
-      -Language         pl or en (default: Windows language; alias -Jezyk)
+      -Language         pl, en or es (default: Windows language; alias -Jezyk)
       -NoUpdateCheck    skips the GitHub new-version check at startup (alias -BezAktualizacji)
 
     https://github.com/Banzamel/LLMCleaner - MIT license
@@ -35,11 +35,11 @@ param(
     [string]$Model,
     [Alias('BezAktualizacji')][switch]$NoUpdateCheck,
     [Alias('Dyski')][string[]]$Drives,
-    [Alias('Jezyk')][ValidateSet('', 'pl', 'en')][string]$Language = '',
+    [Alias('Jezyk')][ValidateSet('', 'pl', 'en', 'es')][string]$Language = '',
     [string]$Sid      # account that started the program (set by elevation)
 )
 
-$Version = '1.6.4'
+$Version = '1.6.5'
 $ErrorActionPreference = 'SilentlyContinue'
 $AppDir = $PSScriptRoot
 
@@ -47,14 +47,14 @@ $AppDir = $PSScriptRoot
 . (Join-Path $AppDir 'lib\Core\Config.ps1')
 $Config = Read-Config
 $PreviewFromParam = [bool]$Preview   # "preview" shortcut - kept after a restart from Settings
-if (-not $Language -and $Config.Language -in 'pl', 'en') { $Language = $Config.Language }
+if (-not $Language -and $Config.Language -in 'pl', 'en', 'es') { $Language = $Config.Language }
 if (-not $Model -and $Config.Model) { $Model = "$($Config.Model)" }
 if ($Config.Assistant -eq $false) { $NoAI = [switch]$true }
 if ($Config.CheckUpdates -eq $false) { $NoUpdateCheck = [switch]$true }
 if ($Config.Preview -eq $true) { $Preview = [switch]$true }
 
-# UI language: Polish on Polish Windows, English otherwise
-if (-not $Language) { $Language = if ((Get-UICulture).TwoLetterISOLanguageName -eq 'pl') { 'pl' } else { 'en' } }
+# UI language: as in Windows when it is Polish or Spanish, English otherwise
+if (-not $Language) { $Language = switch ((Get-UICulture).TwoLetterISOLanguageName) { 'pl' { 'pl' } 'es' { 'es' } default { 'en' } } }
 
 # Model chosen in the installer (config.json next to the script) unless -Model was given
 if (-not $Model) { $Model = Get-InstallerModel }
@@ -64,7 +64,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host $(if ($Language -eq 'en') { 'LLMCleaner needs administrator rights - elevating...' } else { 'LLMCleaner wymaga uprawnień administratora - podnoszę...' }) -ForegroundColor Yellow
+    Write-Host $(switch ($Language) { 'pl' { 'LLMCleaner wymaga uprawnień administratora - podnoszę...' } 'es' { 'LLMCleaner necesita permisos de administrador - elevando...' } default { 'LLMCleaner needs administrator rights - elevating...' } }) -ForegroundColor Yellow
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass')
     if (-not $Console) { $argList += '-WindowStyle', 'Hidden' }   # the window needs no console
     $argList += '-File', "`"$PSCommandPath`"", '-Model', "`"$Model`"", '-Language', $Language

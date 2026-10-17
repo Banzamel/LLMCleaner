@@ -16,7 +16,7 @@ function Confirm-Cleanup {
     foreach ($x in $lines) { Write-Host "   $($x.T)" -ForegroundColor $x.K }
     Write-Host ""
     $t = Read-Host (L '   Uruchomić czyszczenie? [t/N]' '   Start cleaning? [y/N]')
-    if ($t -match '^[TtYy]') { return $true }
+    if ($t -match '^[TtYySs]') { return $true }
     Write-Host (L '   Wracam do planu.' '   Back to the plan.') -ForegroundColor DarkGray
     $false
 }

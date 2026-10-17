@@ -16,7 +16,7 @@ $LeftoverSchema = @{
     required   = @('explanations')
 }
 
-$PromptLeftovers = if ($Language -eq 'en') {
+$PromptLeftovers = if ($Language -ne 'pl') {
     @'
 You are LLMCleaner, a Windows cleanup assistant. You get a list of leftovers of uninstalled programs and games
 (folders, files and registry keys). For EACH item write in the "description" field what the program, game or vendor was.
@@ -42,8 +42,9 @@ Zasady:
 - Maks. 12 słów, po polsku. Nie oceniasz, czy usuwać.
 '@
 }
+$PromptLeftovers = Convert-Prompt $PromptLeftovers @('unknown program', 'game developer')
 
-$PromptChat = if ($Language -eq 'en') {
+$PromptChat = if ($Language -ne 'pl') {
     @'
 You are LLMCleaner, a Windows cleanup assistant running locally.
 Below is the scanner report and the current cleanup plan. Answer the user's questions about files, folders, programs,
@@ -63,6 +64,7 @@ użytkownik. Jeśli chce usunąć coś spoza planu, wyjaśnij, jak zrobić to be
 Raport zawiera tylko największe pozostałości - w „summary” jest, ile pozycji pominięto i ile razem zajmują.
 '@
 }
+$PromptChat = Convert-Prompt $PromptChat
 
 # Leftover descriptions by the model. Returns the number of described items (or -1 on error).
 function Invoke-LeftoverAi {
