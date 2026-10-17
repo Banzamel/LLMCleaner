@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.5 (2026-10-17)
+
+- **Spanish.** The window, the text mode, the AI answers and the installer are now also in Spanish. The language can
+  be chosen in the installer (a first install starts in that language), in *Settings* or with `-Language es`.
+  Translations live in `lang\es.json`.
+- **Cleanup plan:** large folders and files (over 1 GB) moved to their own tab, *Large files and folders*, and are
+  never ticked in advance. Column headers sort the list by name, size or confidence. Search also matches the path.
+- **Descriptions on click, not on hover**, in the plan, startup apps and drivers lists. In the plan and the drivers
+  list the box on the left ticks an item and a click on the name shows the description.
+- **Settings:** *What to scan* turns each category, the leftover search and large files on or off; *Excluded folders*
+  are never measured, listed or deleted, also inside a cache folder; **Clear the logs** deletes old run logs, and
+  logs older than 30 days are deleted at start (can be turned off). Registry backups are always kept.
+- Text mode accepts *s* (sí) as yes.
+
 ## 1.6.4 (2026-10-16)
 
 - No visible changes: the code is now fully in English. Folders, files, functions, variables and comments have

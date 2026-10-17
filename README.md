@@ -11,8 +11,8 @@ in the program folder, so everything runs on your machine. The only network requ
 against GitHub Releases (disable it with `-NoUpdateCheck`) and the driver check on Windows Update, which runs only
 when you click **Check** on the *Drivers* page.
 
-> LLMCleaner has a **window** (default) and a **text mode** (`-Console`). The interface is in **English or Polish**,
-> chosen from the Windows display language (`-Language en` / `-Language pl` to override).
+> LLMCleaner has a **window** (default) and a **text mode** (`-Console`). The interface is in **English, Polish or Spanish**,
+> chosen in the installer, in *Settings* or from the Windows display language (`-Language en` / `pl` / `es` to override).
 
 ---
 
@@ -117,8 +117,10 @@ The pages are in the navigation bar on the left.
 1. **Overview**: tick the drives to scan (each row shows how full the drive is) and click **Scan** (or press **F5**).
    Afterwards the page shows how much space can be freed, a chart of what takes it up and how many programs start
    with Windows, with **View the cleanup plan** and **Clean now...**.
-2. **Cleanup plan**: click an item to tick or untick it. Search and the *All / Selected / Opt-in* filter narrow the
-   list, and **Select recommended** brings back the default plan. Hover over an item for its full description.
+2. **Cleanup plan**: the box on the left ticks or unticks an item, a click on its name shows the full description,
+   and a click on a column header (name, size, confidence) sorts the list. Large folders and files (over 1 GB) are in
+   their own tab, **Large files and folders**, and are never ticked in advance. Search and the
+   *All / Selected / Opt-in* filter narrow the list, and **Select recommended** brings back the default plan.
    - **AI: what were the leftovers?** fills in what each leftover was (marked *AI (may be wrong)*),
    - **Clean selected...** shows a summary and asks for confirmation. A progress screen then shows every step, and
      the result: space freed, free space before and after, backups and the restore point.
@@ -134,8 +136,10 @@ The pages are in the navigation bar on the left.
    problem in Device Manager are listed below; double-click opens Device Manager.
 6. **AI assistant**: ask about the plan, folders, programs or games (general questions work before a scan too).
 7. **Log**: everything the program does, also written to the log file.
-8. **Settings**: language, theme (light, dark or as in Windows), the AI assistant on or off, the AI model, the
-   update check at start and *always start in preview mode*. **Save and restart** applies them at once. They are
+8. **Settings**: language (Polish, English, Spanish), theme (light, dark or as in Windows), the AI assistant on or
+   off, the AI model, the update check at start, *always start in preview mode*, the logs (open the folder, clear
+   them, delete ones older than 30 days at start), **What to scan** (each category, leftovers and large files on or
+   off) and **Excluded folders**, which are never measured, listed or deleted. **Save and restart** applies them at once. They are
    kept in `%LOCALAPPDATA%\LLMCleaner\settings.json`; command-line parameters win over them.
 
 **Ctrl+1** to **Ctrl+8** switch pages. The window follows the Windows light or dark app mode (unless *Settings*
@@ -150,7 +154,7 @@ LLMCleaner.bat -Preview            preview: scan and plan only, nothing is delet
 LLMCleaner.bat -NoAI               without the AI assistant (alias -BezLLM)
 LLMCleaner.bat -Model qwen3:8b     another model
 LLMCleaner.bat -Drives C,P         pre-select these drives (alias -Dyski)
-LLMCleaner.bat -Language en        interface language: en or pl (alias -Jezyk)
+LLMCleaner.bat -Language en        interface language: en, pl or es (alias -Jezyk)
 LLMCleaner.bat -NoUpdateCheck      no update check at start (alias -BezAktualizacji)
 ```
 
@@ -250,7 +254,8 @@ about game studios, the model also invented titles. That is why:
 
 The files are dot-sourced by `LLMCleaner.ps1` in a fixed order (`$CoreFiles`, `$GuiFiles`, `$ConsoleFiles`) and share
 its variables, so a new file has to be added to that list and to nothing else. Names, folders and comments are in English and no file is longer than
-300 lines; only the user-facing text (the `L 'pl' 'en'` pairs) is also in Polish. The code is formatted with
+300 lines; only the user-facing text (the `L 'pl' 'en'` pairs) is also in Polish. Other languages are in `lang\<code>.json`,
+which maps the English text to the translation; a text missing there is shown in English. The code is formatted with
 PSScriptAnalyzer using `PSScriptAnalyzerSettings.psd1`:
 
 ```powershell

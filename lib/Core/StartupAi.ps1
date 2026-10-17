@@ -3,12 +3,14 @@
 #>
 
 # As in disk analysis: advice only from this list; for protected entries the program sets it
-$StartupAdvice = if ($Language -eq 'en') {
+$StartupAdvice = if ($Language -ne 'pl') {
     @('keep it on', 'can be turned off - start it by hand when needed', 'check whether you use it')
 }
 else {
     @('zostaw włączone', 'można wyłączyć - uruchomisz ręcznie, gdy potrzebne', 'sprawdź, czy go używasz')
 }
+$StartupAdviceEn = $StartupAdvice
+$StartupAdvice = @($StartupAdvice | ForEach-Object { if ($Language -eq 'pl') { $_ } else { Get-Translation $_ } })
 
 $StartupSchema = @{
     type       = 'object'
@@ -22,7 +24,7 @@ $StartupSchema = @{
     required   = @('items')
 }
 
-$PromptStartup = if ($Language -eq 'en') {
+$PromptStartup = if ($Language -ne 'pl') {
     @'
 You are LLMCleaner, a Windows cleanup assistant. You get a list of programs that start when the user signs in
 (name, command, publisher, source). For EACH item give:
@@ -50,6 +52,7 @@ Zasady:
 - Nie zmyślaj nazw programów, których nie ma w danych. Opis maks. 12 słów, po polsku.
 '@
 }
+$PromptStartup = Convert-Prompt $PromptStartup ($StartupAdviceEn + 'unknown program')
 
 # Model descriptions and advice for startup entries. Returns the number of described items (or -1 on error).
 function Invoke-StartupAi($entries) {

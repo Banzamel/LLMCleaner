@@ -37,7 +37,7 @@ function Invoke-StartupConsole {
         if (-not $selected.Count) { continue }
         foreach ($w in $selected) { Write-Host ("   {0} -> {1}" -f $w.Name, $(if ($w.IsEnabled) { L 'wyłącz' 'turn off' } else { L 'włącz' 'turn on' })) -ForegroundColor White }
         $t = Read-Host (L '   Zmienić? [t/N]' '   Change? [y/N]')
-        if ($t -notmatch '^[TtYy]') { continue }
+        if ($t -notmatch '^[TtYySs]') { continue }
         foreach ($w in $selected) {
             try { Set-StartupEnabled $w (-not $w.IsEnabled) }
             catch { Write-Host ("   {0}: {1}" -f $w.Name, $_.Exception.Message) -ForegroundColor Yellow }

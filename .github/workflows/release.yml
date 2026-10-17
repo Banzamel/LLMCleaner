@@ -58,7 +58,7 @@ jobs:
           $tmp = "portable\LLMCleaner"
           New-Item -ItemType Directory -Force $tmp | Out-Null
           Copy-Item LLMCleaner.ps1, LLMCleaner.bat, LLMCleaner.ico, README.md, LICENSE, installer\Install-AI.ps1 $tmp
-          Copy-Item lib $tmp -Recurse
+          Copy-Item lib, lang $tmp -Recurse
           Compress-Archive -Path $tmp -DestinationPath "dist\LLMCleaner-$v-portable.zip"
           Get-ChildItem dist | ForEach-Object { "{0}  {1:N0} KB" -f $_.Name, ($_.Length / 1KB) }
 

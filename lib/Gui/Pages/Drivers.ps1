@@ -151,7 +151,7 @@ function New-DriversPage {
     $page = New-Page
     $btnWu = New-Button 'Windows Update' 'outline' @{ Width = (Px 160) }
     $btnCheck = New-Button (L 'Sprawdź' 'Check') 'primary' @{ Width = (Px 130) }
-    $n = New-PageHeader (L 'Sterowniki' 'Drivers') (L 'Nowsze sterowniki dla urządzeń tego komputera z Windows Update - podpisane, te same co w aktualizacjach opcjonalnych. Kliknij wiersz, żeby go zaznaczyć lub odznaczyć. Dwuklik otwiera Menedżera urządzeń.' 'Newer drivers for the devices in this PC from Windows Update - signed, the same as the optional updates. Click a row to tick or untick it. Double-click opens Device Manager.') @($btnWu, $btnCheck)
+    $n = New-PageHeader (L 'Sterowniki' 'Drivers') (L 'Nowsze sterowniki dla urządzeń tego komputera z Windows Update - podpisane, te same co w aktualizacjach opcjonalnych. Pole po lewej zaznacza sterownik, kliknięcie nazwy pokazuje pełny opis. Dwuklik otwiera Menedżera urządzeń.' 'Newer drivers for the devices in this PC from Windows Update - signed, the same as the optional updates. The box on the left ticks a driver; click its name for the full description. Double-click opens Device Manager.') @($btnWu, $btnCheck)
     $btnWu.Add_Click({ Start-Process 'ms-settings:windowsupdate-optionalupdates' })
     $script:UI.BtnDriverCheck = $btnCheck
 
@@ -162,11 +162,13 @@ function New-DriversPage {
     $lv = New-RowList { param($g, $w, $r, $h) Draw-DriverRow $g $w $r $h }
     $lv.Tag.Click = {
         param($w, $x, $r)
-        if ($w.Problem -or -not (Test-DriverSelectable $w.Obj)) { return }
+        # The box ticks the driver; a click on its name shows the full description
+        if ($x -ge (Px 56) -or $w.Problem -or -not (Test-DriverSelectable $w.Obj)) { return }
         $w.Obj.Selected = -not $w.Obj.Selected
         Update-DriverTotal
     }
-    $lv.Tag.HandCursor = { param($w, $x, $r) -not $w.Problem -and (Test-DriverSelectable $w.Obj) }
+    $lv.Tag.HandCursor = { param($w, $x, $r) $x -ge (Px 56) -or (-not $w.Problem -and (Test-DriverSelectable $w.Obj)) }
+    $lv.Tag.HintArea = { param($w, $x, $r) $x -ge (Px 56) }
     $lv.Tag.DoubleClick = { param($w) Start-Process devmgmt.msc }
     $lv.Tag.Hint = {
         param($w)

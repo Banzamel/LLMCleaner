@@ -94,7 +94,7 @@ function Get-DriveAnalysis([string]$letter) {
 }
 
 # The model picks advice only from this list (enum in the schema) - it cannot advise manual deletion
-$AnalysisAdvice = if ($Language -eq 'en') {
+$AnalysisAdvice = if ($Language -ne 'pl') {
     @('leave it - part of Windows', 'uninstall in Settings > Apps', 'uninstall the game in its launcher',
         'clean it in the program settings', 'review and move to another drive', 'review the contents manually',
         'the TEMP plan category cleans it')
@@ -104,6 +104,8 @@ else {
         'wyczyść w ustawieniach programu', 'przejrzyj i przenieś na inny dysk', 'przejrzyj zawartość ręcznie',
         'oczyści to kategoria TEMP w planie')
 }
+$AnalysisAdviceEn = $AnalysisAdvice
+$AnalysisAdvice = @($AnalysisAdvice | ForEach-Object { if ($Language -eq 'pl') { $_ } else { Get-Translation $_ } })
 
 # System, program and TEMP folders: the program sets the advice, not the model
 function Get-FixedAdvice([string]$s) {
@@ -126,7 +128,7 @@ $AnalysisSchema = @{
     required   = @('items')
 }
 
-$PromptAnalysis = if ($Language -eq 'en') {
+$PromptAnalysis = if ($Language -ne 'pl') {
     @'
 You are LLMCleaner, a Windows cleanup assistant. You get a list of the largest folders and files on a drive
 (path, size, last change date, sometimes a hint from the program). For EACH item give:
@@ -160,6 +162,7 @@ Zasady:
 - Opis maks. 12 słów, po polsku.
 '@
 }
+$PromptAnalysis = Convert-Prompt $PromptAnalysis ($AnalysisAdviceEn + 'unknown data')
 
 # Model descriptions and advice for disk analysis. Returns the number of described items (or -1 on error).
 function Invoke-AnalysisAi($a) {

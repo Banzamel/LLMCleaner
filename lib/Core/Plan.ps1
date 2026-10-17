@@ -8,9 +8,14 @@ function Build-Plan {
     foreach ($k in $script:Categories) {
         $k.Selected = -not $k.OptIn -and -not $k.Blocker -and $k.Type -in 'folder', 'thumbnails' -and $k.Bytes -gt 0
     }
-    # A very large folder (over 10 GB) is more often a live game or program than a leftover - the user decides
-    foreach ($p in $script:Leftovers) { $p.Selected = $p.Confidence -in 'high', 'medium' -and [double]$p.Bytes -lt 10GB }
+    # Large files and folders (own tab on the plan page) are more often something the user still wants
+    # than a leftover - never selected in advance
+    foreach ($p in $script:Leftovers) { $p.Selected = $p.Confidence -in 'high', 'medium' -and -not (Test-LargeItem $p) }
 }
+
+# Large item: a big file found in the profile or Downloads, or a leftover folder of 1 GB or more
+$LargeItemSize = 1GB
+function Test-LargeItem($p) { [bool]$p.LargeFile -or ($p.Type -in 'folder', 'file' -and [double]$p.Bytes -ge $LargeItemSize) }
 
 function Get-LockedTotal { [double](@($script:Categories | Where-Object { $_.Selected } | ForEach-Object { [double]$_.Locked }) | Measure-Object -Sum).Sum }
 

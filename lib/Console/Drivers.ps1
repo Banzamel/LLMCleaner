@@ -48,7 +48,7 @@ function Invoke-DriversConsole {
         foreach ($d in $chosen) { Write-Host ("   {0}  {1}" -f $d.Name, $d.Version) -ForegroundColor White }
         Write-Host (L '   Najpierw powstanie punkt przywracania. Przy sterowniku karty graficznej ekran może na chwilę zgasnąć.' '   A restore point is created first. With a graphics driver the screen may go blank for a moment.') -ForegroundColor DarkGray
         $t = Read-Host (L '   Zainstalować? [t/N]' '   Install? [y/N]')
-        if ($t -notmatch '^[TtYy]') { continue }
+        if ($t -notmatch '^[TtYySs]') { continue }
         $restore = New-RestorePoint
         Write-Host ((L '   Punkt przywracania: {0}' '   Restore point: {0}') -f $restore.Description) -ForegroundColor $(if ($restore.Ok) { 'Green' } else { 'Yellow' })
         Write-Host (L '   Instaluję - nie wyłączaj komputera...' '   Installing - do not turn off the computer...') -ForegroundColor DarkGray

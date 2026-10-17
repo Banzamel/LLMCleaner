@@ -4,7 +4,25 @@
     (lib\Console or lib\Gui) decides where to show it.
 #>
 
-function L([string]$pl, [string]$en) { if ($Language -eq 'en') { $en } else { $pl } }
+# Texts are written in the code in Polish and English. Other languages (lang\<code>.json) translate
+# the English text; a missing entry falls back to English.
+$LanguageNames = @{ pl = 'Polish'; en = 'English'; es = 'Spanish' }
+$script:Translation = New-Object Collections.Hashtable ([StringComparer]::Ordinal)
+if ($Language -notin 'pl', 'en') {
+    $file = Join-Path $AppDir "lang\$Language.json"
+    try { foreach ($p in (Get-Content -LiteralPath $file -Raw -Encoding UTF8 | ConvertFrom-Json).PSObject.Properties) { $script:Translation[$p.Name] = $p.Value } } catch { }
+}
+function Get-Translation([string]$en) { $t = $script:Translation[$en]; if ($t) { $t } else { $en } }
+function L([string]$pl, [string]$en) { switch ($Language) { 'pl' { $pl } 'en' { $en } default { Get-Translation $en } } }
+
+# AI prompts exist in Polish and English. Other languages get the English prompt with the answer language
+# and the quoted values the model must return ($phrases - advice, "unknown program") translated.
+function Convert-Prompt([string]$prompt, [string[]]$phrases = @()) {
+    if ($Language -in 'pl', 'en') { return $prompt }
+    $t = $prompt.Replace('in English', "in $($LanguageNames[$Language])")
+    foreach ($p in $phrases) { $t = $t.Replace("`"$p`"", "`"$(Get-Translation $p)`"") }
+    $t
+}
 
 $script:Mode = 'console'   # or 'window' - set by Window.ps1
 

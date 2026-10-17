@@ -2,8 +2,9 @@
     LLMCleaner - measuring and deleting files, lock test, previous Windows version
 #>
 
-# All files under a folder. Does not follow junctions or symlinks.
+# All files under a folder. Does not follow junctions or symlinks, skips folders excluded in Settings.
 function Get-AllFiles($path) {
+    if (Test-Excluded "$path") { return }
     $stack = [System.Collections.Stack]::new()
     $stack.Push([IO.DirectoryInfo]$path)
     while ($stack.Count) {
@@ -11,7 +12,7 @@ function Get-AllFiles($path) {
         try { $fsItems = $d.GetFileSystemInfos() } catch { continue }
         foreach ($e in $fsItems) {
             if ($e.Attributes -band $REPARSE) { continue }
-            if ($e -is [IO.DirectoryInfo]) { $stack.Push($e) } else { $e }
+            if ($e -is [IO.DirectoryInfo]) { if (-not (Test-Excluded $e.FullName)) { $stack.Push($e) } } else { $e }
         }
     }
 }
@@ -31,6 +32,7 @@ function Measure-Paths($paths, $minAgeDays = 0) {
     $bytes = 0.0; $n = 0; $usedBytes = 0.0; $lockedFiles = [System.Collections.Generic.List[object]]::new()
     $cutoff = (Get-Date).AddDays(-$minAgeDays)
     foreach ($s in $paths) {
+        if (Test-Excluded "$s") { continue }
         if (Test-Path -LiteralPath $s -PathType Leaf) { $files = @(Get-Item -LiteralPath $s -Force) }
         elseif (-not (Test-Path -LiteralPath $s -PathType Container)) { continue }
         elseif ((Get-Item -LiteralPath $s -Force).Attributes -band $REPARSE) { continue }
@@ -51,6 +53,7 @@ function Measure-Paths($paths, $minAgeDays = 0) {
 function Remove-FolderContent($path, $minAgeDays = 0) {
     $freed = 0.0; $errors = 0
 
+    if (Test-Excluded "$path") { return @{ Bytes = 0.0; Errors = 0 } }
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         $f = Get-Item -LiteralPath $path -Force
         try { $len = $f.Length; $f.Attributes = 'Normal'; $f.Delete(); $freed += $len } catch { $errors++ }
@@ -82,6 +85,7 @@ function Remove-FolderContent($path, $minAgeDays = 0) {
                 continue
             }
             if ($e -is [IO.DirectoryInfo]) {
+                if (Test-Excluded $e.FullName) { continue }
                 $stack.Push($e)
                 if ($minAgeDays -eq 0 -or $e.LastWriteTime -le $cutoff) { $dirs.Add($e) }
                 continue

@@ -40,6 +40,7 @@ MinVersion=10.0
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [CustomMessages]
 english.AiGroup=AI assistant (optional):
@@ -70,6 +71,20 @@ polish.Docs=Otwórz dokumentację
 polish.ShortPreview=podgląd
 polish.ShortConsole=konsola
 
+spanish.AiGroup=Asistente de IA (opcional):
+spanish.AiTask=Instalar el asistente de IA en la carpeta del programa (descarga unos 4-7 GB)
+spanish.ModelTitle=Modelo de IA
+spanish.ModelDesc=Elige el modelo local que usará el asistente.
+spanish.ModelSub=El motor de IA (Ollama, 1,4 GB) y el modelo se guardan en la carpeta del programa y se eliminan al desinstalar. El asistente solo explica los restos y responde preguntas - la limpieza funciona sin él.
+spanish.Model4b=qwen3:4b-instruct - recomendado, rápido, cabe en tarjetas con 6 GB de VRAM (descarga de 2,5 GB)
+spanish.Model8b=qwen3:8b - más listo, necesita unos 8 GB de VRAM, más lento en tarjetas pequeñas (descarga de 5,2 GB)
+spanish.RunAi=Configurando el asistente de IA (Ollama + modelo)...
+spanish.Launch=Abrir LLMCleaner
+spanish.LaunchPreview=Abrir LLMCleaner en modo de vista previa (no se elimina nada)
+spanish.Docs=Leer la documentación
+spanish.ShortPreview=vista previa
+spanish.ShortConsole=consola
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "ai"; Description: "{cm:AiTask}"; GroupDescription: "{cm:AiGroup}"
@@ -82,6 +97,7 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Install-AI.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\lang\*"; DestDir: "{app}\lang"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 ; Before 1.6.2 the code was in three files; the update replaces them with the lib\Rdzen, lib\Okno and lib\Konsola folders
@@ -166,6 +182,25 @@ function GetLang(Param: String): String;
 begin
   if ActiveLanguage = 'polish' then
     Result := 'pl'
+  else if ActiveLanguage = 'spanish' then
+    Result := 'es'
   else
     Result := 'en';
+end;
+
+// First install: the program starts in the language chosen in the installer (Settings can change it).
+// Existing settings, also the pre-1.6.4 ustawienia.json, are left alone.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Dir: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    Dir := ExpandConstant('{localappdata}\{#AppName}');
+    if not FileExists(Dir + '\settings.json') and not FileExists(Dir + '\ustawienia.json') then
+    begin
+      ForceDirectories(Dir);
+      SaveStringToFile(Dir + '\settings.json', '{"Language": "' + GetLang('') + '"}', False);
+    end;
+  end;
 end;
