@@ -89,7 +89,7 @@ $CoreFiles = @(
 )
 $GuiFiles = @(
     'Gui\Base.ps1', 'Gui\Theme.ps1', 'Gui\Output.ps1', 'Gui\Drawing.ps1', 'Gui\Controls.ps1', 'Gui\List.ps1',
-    'Gui\State.ps1', 'Gui\Pages\Overview.ps1', 'Gui\Pages\Plan.ps1', 'Gui\Pages\Analysis.ps1',
+    'Gui\State.ps1', 'Gui\Pages\Overview.ps1', 'Gui\Pages\PlanRows.ps1', 'Gui\Pages\Plan.ps1', 'Gui\Pages\Analysis.ps1',
     'Gui\Pages\Startup.ps1', 'Gui\Pages\Drivers.ps1', 'Gui\Pages\Cleanup.ps1', 'Gui\Pages\Chat.ps1',
     'Gui\Pages\Log.ps1', 'Gui\Pages\Settings.ps1', 'Gui\Navigation.ps1', 'Gui\Placement.ps1', 'Gui\Window.ps1'
 )

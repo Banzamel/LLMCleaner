@@ -4,10 +4,11 @@
 
 # Scrollable list of rows of any height. A row is a hashtable with H (height), Section (group header)
 # or Obj (data). Drawn by the Draw($g, $row, $rect, $hover) block; clicks go to Click/DoubleClick.
+# The full description (Hint) pops up on click, not on hover - HintArea($row, $x, $rect) can limit where.
 function New-RowList([scriptblock]$draw) {
     $p = New-Control Panel @{ Dock = 'Fill'; AutoScroll = $true; BackColor = $script:Style.Card }
     Enable-DoubleBuffer $p
-    $p.Tag = @{ Rows = @(); Draw = $draw; Hover = -1; Click = $null; DoubleClick = $null; HandCursor = $null; Hint = $null; EmptyText = '' }
+    $p.Tag = @{ Rows = @(); Draw = $draw; Hover = -1; Click = $null; DoubleClick = $null; HandCursor = $null; Hint = $null; HintArea = $null; EmptyText = '' }
     $p.Add_Paint({
             $g = $_.Graphics; $t = $this.Tag; $s = $script:Style
             $g.Clear($this.BackColor)
@@ -39,18 +40,23 @@ function New-RowList([scriptblock]$draw) {
             if ($i -ne $t.Hover) {
                 $t.Hover = $i
                 $this.Invalidate()
-                $text = if ($w -and -not $w.Section -and $t.Hint) { & $t.Hint $w } else { '' }
-                $script:UI.Hint.SetToolTip($this, "$text")
+                $script:UI.Hint.Hide($this)
             }
         })
-    $p.Add_MouseLeave({ $this.Tag.Hover = -1; $this.Invalidate() })
+    $p.Add_MouseLeave({ $this.Tag.Hover = -1; $this.Invalidate(); $script:UI.Hint.Hide($this) })
     $p.Add_MouseClick({
             if ($_.Button -ne 'Left') { return }
             $t = $this.Tag
             $i = Get-RowAt $this $_.Y
-            if ($i -lt 0 -or -not $t.Click) { return }
+            if ($i -lt 0) { return }
             $w = $t.Rows[$i]
-            if (-not $w.Section) { & $t.Click $w $_.X (Get-RowRect $this $w) }
+            if ($w.Section) { return }
+            $r = Get-RowRect $this $w
+            if ($t.Click) { & $t.Click $w $_.X $r }
+            if ($t.Hint -and (-not $t.HintArea -or (& $t.HintArea $w $_.X $r))) {
+                $text = "$(& $t.Hint $w)"
+                if ($text) { $script:UI.Hint.Show($text, $this, $_.X + (Px 14), $_.Y + (Px 18), 20000) }
+            }
         })
     $p.Add_MouseDoubleClick({
             $t = $this.Tag

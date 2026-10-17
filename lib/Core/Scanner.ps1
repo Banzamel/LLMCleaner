@@ -144,7 +144,7 @@ function Invoke-FullScan {
     # Large files from Downloads and outside AppData - the user decides, never preselected
     foreach ($c in $script:ProfileScan.Candidates) {
         $leftoverList += @{ Type = 'file'; Path = $c.Path; Name = (Split-Path $c.Path -Leaf); Bytes = $c.Bytes
-            LastWrite = $c.Modified; Confidence = 'low'
+            LastWrite = $c.Modified; Confidence = 'low'; LargeFile = $true
             Reason = $(if ($c.InDownloads) { L 'Duży plik w Pobranych - stary instalator albo archiwum?' 'Large file in Downloads - an old installer or archive?' }
                 else { L 'Duży plik (ponad 1 GB) w profilu użytkownika.' 'Large file (over 1 GB) in the user profile.' })
         }

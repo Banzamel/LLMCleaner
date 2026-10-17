@@ -147,6 +147,7 @@ function New-StartupPage {
         elseif ($x -ge $r.Width - (Px 112)) { Remove-StartupRow $w.Obj }
     }
     $lv.Tag.HandCursor = { param($w, $x, $r) $x -ge $r.Width - (Px 112) -and -not $w.Obj.Protected -and -not $Preview }
+    $lv.Tag.HintArea = { param($w, $x, $r) $x -lt $r.Width - (Px 112) }
     $lv.Tag.DoubleClick = { param($w) if ($w.Obj.Exists) { Start-Process explorer.exe -ArgumentList "/select,`"$($w.Obj.File)`"" } }
     $lv.Tag.Hint = {
         param($w)

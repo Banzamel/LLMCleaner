@@ -50,6 +50,37 @@ function New-Card([hashtable]$w = @{}, [switch]$Border) {
 }
 
 # Panel drawn entirely by the given block (Paint gets Graphics and the panel)
+# Segmented switch (tabs, filters): options @{ Id; T } where T is a string or a block (e.g. with a count).
+# $current returns the chosen Id, $pick gets the Id the user clicked.
+function New-Segment([object[]]$options, [scriptblock]$current, [scriptblock]$pick, [int]$minWidth = 300) {
+    $s = $script:Style
+    $c = New-Canvas @{ Dock = 'Left'; Width = (Px $minWidth); BackColor = $s.Background; Cursor = [Windows.Forms.Cursors]::Hand } {
+        param($g, $p)
+        $s = $script:Style
+        $o = $p.Tag.Options
+        Draw-Rect $g 0 0 ($p.Width - 1) ($p.Height - 1) $s.Segment (Px 8)
+        $w = [int](($p.Width - (Px 6)) / $o.Count)
+        $now = & $p.Tag.Current
+        for ($i = 0; $i -lt $o.Count; $i++) {
+            $x = (Px 3) + $i * $w
+            $chosen = $o[$i].Id -eq $now
+            if ($chosen) { Draw-Rect $g $x (Px 3) $w ($p.Height - (Px 7)) $s.SegmentSelected (Px 6) }
+            $t = if ($o[$i].T -is [scriptblock]) { & $o[$i].T } else { $o[$i].T }
+            Draw-Text $g $t $(if ($chosen) { $s.Bold } else { $s.Body }) $(if ($chosen) { $s.Text } else { $s.TextDim }) $x 0 $w $p.Height 'HorizontalCenter'
+        }
+    }
+    $c.Tag.Options = $options; $c.Tag.Current = $current; $c.Tag.Pick = $pick
+    $widest = ($options | ForEach-Object { $t = if ($_.T -is [scriptblock]) { & $_.T } else { $_.T }; Measure-TextWidth "$t" $s.Bold } | Measure-Object -Maximum).Maximum
+    $c.Width = [Math]::Max((Px $minWidth), $options.Count * ([int]$widest + (Px 24)) + (Px 6))
+    $c.Add_MouseClick({
+            $o = $this.Tag.Options
+            $i = [Math]::Min($o.Count - 1, [Math]::Max(0, [int][Math]::Floor(($_.X - (Px 3)) / (($this.Width - (Px 6)) / $o.Count))))
+            & $this.Tag.Pick $o[$i].Id
+            $this.Invalidate()
+        })
+    $c
+}
+
 function New-Canvas([hashtable]$w, [scriptblock]$draw) {
     $p = New-Control Panel $w
     Enable-DoubleBuffer $p
