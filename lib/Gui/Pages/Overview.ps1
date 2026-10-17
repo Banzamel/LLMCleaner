@@ -152,14 +152,14 @@ function Draw-DriveRow($g, $w, $r, [bool]$hover) {
     $name = "$($d.D.DeviceID)  $(if ($d.D.VolumeName) { $d.D.VolumeName } else { L 'bez nazwy' 'no label' })"
     if ($d.Sys) { $name += L '  (systemowy)' '  (system)' }
     $free = (L 'wolne {0} z {1}' '{0} free of {1}') -f (Format-Size $d.D.FreeSpace), (Format-Size $d.D.Size)
-    $freeW = Measure-TextWidth $free $s.Small
-    Draw-Text $g $name $s.Bold $s.Text (Px 30) $y ($r.Width - (Px 36) - $freeW) (Px 22)
-    Draw-Text $g $free $s.Small $s.TextDim ($r.Width - $freeW - (Px 2)) $y $freeW (Px 22) 'Right'
+    # Name on the first line, free space on the second, so the name gets the full width
+    Draw-Text $g $name $s.Bold $s.Text (Px 30) $y ($r.Width - (Px 34)) (Px 22)
+    Draw-Text $g $free $s.Small $s.TextDim (Px 30) ($y + (Px 21)) ($r.Width - (Px 34)) (Px 20)
     $usedBytes = if ($d.D.Size -gt 0) { 1 - [double]$d.D.FreeSpace / [double]$d.D.Size } else { 0 }
     $trackW = $r.Width - (Px 32)
-    Draw-Rect $g (Px 30) ($y + (Px 30)) $trackW (Px 8) $s.Track (Px 4)
+    Draw-Rect $g (Px 30) ($y + (Px 46)) $trackW (Px 8) $s.Track (Px 4)
     $k = if ($usedBytes -gt 0.9) { $s.Red } elseif ($usedBytes -gt 0.75) { $s.Warning } else { $s.Accent }
-    Draw-Rect $g (Px 30) ($y + (Px 30)) ([int][Math]::Max((Px 8), $trackW * $usedBytes)) (Px 8) $k (Px 4)
+    Draw-Rect $g (Px 30) ($y + (Px 46)) ([int][Math]::Max((Px 8), $trackW * $usedBytes)) (Px 8) $k (Px 4)
 }
 
 function New-OverviewPage {
@@ -216,7 +216,7 @@ function New-OverviewPage {
     foreach ($d in Get-FixedDrives) {
         $sys = $d.DeviceID -eq $Sys
         $ticked = $sys -or -not $selected.Count -or ($d.DeviceID.TrimEnd(':') -in $selected)
-        $drives += @{ H = (Px 58); Obj = @{ D = $d; Sys = $sys; Ticked = $ticked; Id = $d.DeviceID } }
+        $drives += @{ H = (Px 72); Obj = @{ D = $d; Sys = $sys; Ticked = $ticked; Id = $d.DeviceID } }
     }
     Set-Rows $lvDrives $drives
     $script:UI.DriveList = $lvDrives

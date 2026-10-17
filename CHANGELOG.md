@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.7 (2026-10-17)
+
+- **Overview:** in *Drives to scan* the free space moved to a second line under the drive name, so names such as
+  *C: no label (system)* are no longer cut off.
+
 ## 1.6.6 (2026-10-17)
 
 - **Overview:** after a scan, three tiles next to the result: *Safe to delete*, *To review* and *Large files and
