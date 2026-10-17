@@ -24,13 +24,7 @@ function Update-Overview {
         $u.Result.ForeColor = $s.Green
         $u.Stage.Text = L 'Nic nie jest zaznaczone. Plan czyszczenia pokazuje też pozycje na życzenie.' 'Nothing is selected. The cleanup plan also lists opt-in items.'
     }
-    $lockedBytes = [double](@($script:Categories | ForEach-Object { [double]$_.Locked }) | Measure-Object -Sum).Sum
-    $enabled = @($script:Startup | Where-Object { $_ -and $_.IsEnabled }).Count
-    $u.StatsData = @(
-        @{ W = "$(@($script:Categories | Where-Object { $_.Bytes -gt 0 }).Count)"; O = (L 'kategorii z danymi' 'categories with data') }
-        @{ W = "$(@($script:Leftovers).Count)"; O = (L 'pozostałości po programach' 'program leftovers') }
-        @{ W = (Format-Size $lockedBytes); O = (L 'zablokowane (pliki w użyciu)' 'locked (files in use)') }
-        @{ W = $(if ($null -eq $script:Startup) { '-' } else { "$enabled" }); O = (L 'programów w autostarcie' 'startup apps') })
+    $u.StatsData = Get-OverviewTiles
     $u.Stats.Visible = $true
     $u.Stats.Invalidate()
 
@@ -69,16 +63,56 @@ function Update-StartupCard {
     $u.Stats.Invalidate()
 }
 
+# Three tiles next to the result: safe to delete, to review, large files. Each opens the plan where it belongs.
+function Get-OverviewTiles {
+    $all = @(@($script:Categories) + @($script:Leftovers) | Where-Object { $_ })
+    $large = @(Get-LargeItems)
+    $review = @(@($script:Categories) + @($script:Leftovers | Where-Object { $_ -and -not (Test-LargeItem $_) }) |
+            Where-Object { $_ -and -not $_.Selected -and [double]$_.Bytes -gt 0 })
+    $selected = @($all | Where-Object { $_.Selected })
+    $sum = { param($l) [double](@($l) | ForEach-Object { [double]$_.Bytes } | Measure-Object -Sum).Sum }
+    @(
+        @{ T = (L 'Bezpieczne do usunięcia' 'Safe to delete'); W = (Format-Size (Get-SelectedTotal)); N = $selected.Count; K = $script:Style.Green; Tab = 'plan'; Filter = 'selected' }
+        @{ T = (L 'Do przejrzenia' 'To review'); W = (Format-Size (& $sum $review)); N = $review.Count; K = $script:Style.Warning; Tab = 'plan'; Filter = 'all' }
+        @{ T = (L 'Duże pliki i foldery' 'Large files and folders'); W = (Format-Size (& $sum $large)); N = $large.Count; K = $script:Style.AccentText; Tab = 'large'; Filter = 'all' }
+    )
+}
+
+function Get-TileRect($p, [int]$i) {
+    $gap = Px 8
+    $h = [int](($p.Height - 2 * $gap) / 3)
+    New-Object Drawing.Rectangle(0, ($i * ($h + $gap)), $p.Width, $h)
+}
+
 function Draw-Stats($g, $p) {
     $s = $script:Style
     $data = @($script:UI.StatsData)
-    $gap = Px 12
-    $w = [int](($p.Width - $gap) / 2); $h = [int](($p.Height - $gap) / 2)
-    for ($i = 0; $i -lt [Math]::Min(4, $data.Count); $i++) {
-        $x = ($i % 2) * ($w + $gap); $y = [Math]::Floor($i / 2) * ($h + $gap)
-        Draw-Rect $g $x $y $w $h $s.Tile (Px 10)
-        Draw-Text $g $data[$i].W $s.Number $s.Text ($x + (Px 16)) ($y + (Px 8)) ($w - (Px 24)) (Px 32)
-        Draw-Text $g $data[$i].O $s.Small $s.TextDim ($x + (Px 16)) ($y + (Px 38)) ($w - (Px 24)) (Px 22)
+    $go = L 'Pokaż ›' 'Show ›'
+    $goW = (Measure-TextWidth $go $s.SmallBold) + (Px 8)
+    for ($i = 0; $i -lt [Math]::Min(3, $data.Count); $i++) {
+        $d = $data[$i]; $r = Get-TileRect $p $i
+        Draw-Rect $g $r.X $r.Y $r.Width $r.Height $s.Tile (Px 10)
+        Draw-Rect $g ($r.X + (Px 10)) ($r.Y + (Px 12)) (Px 4) ($r.Height - (Px 24)) $d.K (Px 2)
+        $textW = $r.Width - (Px 30) - $goW - (Px 12)
+        Draw-Text $g ('{0} · {1}' -f $d.T, ((L 'pozycji: {0}' 'items: {0}') -f $d.N)) $s.Small $s.TextDim ($r.X + (Px 26)) ($r.Y + (Px 6)) $textW (Px 20)
+        Draw-Text $g $d.W $s.Medium $s.Text ($r.X + (Px 26)) ($r.Y + (Px 24)) $textW ($r.Height - (Px 26))
+        Draw-Text $g $go $s.SmallBold $s.AccentText ($r.Right - $goW - (Px 12)) $r.Y $goW $r.Height 'Right'
+    }
+}
+
+# Click on a tile: the plan page with the right tab and filter
+function Open-OverviewTile($p, [int]$y) {
+    if (-not $script:Scanned) { return }
+    $data = @($script:UI.StatsData)
+    for ($i = 0; $i -lt [Math]::Min(3, $data.Count); $i++) {
+        $r = Get-TileRect $p $i
+        if ($y -lt $r.Y -or $y -ge $r.Bottom) { continue }
+        $script:PlanTab = $data[$i].Tab; $script:PlanFilter = $data[$i].Filter
+        foreach ($key in 'categories', 'leftovers', 'registry', 'largefolders', 'largefiles') { $script:PlanExpanded[$key] = $true }
+        Update-PlanPage
+        $script:UI.PlanFilter.Invalidate()
+        Show-Page 'plan'
+        return
     }
 }
 
@@ -138,6 +172,8 @@ function New-OverviewPage {
     # Result card: small caption, big number, description, buttons and stat tiles on the right
     $k = New-Card @{ Dock = 'Top'; Height = (Px 230); Padding = (New-Padding 28 22 28 22) }
     $stats = New-Canvas @{ Dock = 'Right'; Width = (Px 420); BackColor = $s.Card; Visible = $false } { param($g, $p) Draw-Stats $g $p }
+    $stats.Cursor = [Windows.Forms.Cursors]::Hand
+    $stats.Add_MouseClick({ Open-OverviewTile $this $_.Y })
     $left = New-Control Panel @{ Dock = 'Fill'; BackColor = $s.Card }
     $small = New-Label (L 'Pierwszy krok' 'First step') @{ Dock = 'Top'; Height = (Px 24); ForeColor = $s.TextDim }
     $result = New-Label (L 'Gotowy do skanu' 'Ready to scan') @{ Dock = 'Top'; Height = (Px 60); Font = $s.Large; AutoEllipsis = $true }

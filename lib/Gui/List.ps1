@@ -5,10 +5,11 @@
 # Scrollable list of rows of any height. A row is a hashtable with H (height), Section (group header)
 # or Obj (data). Drawn by the Draw($g, $row, $rect, $hover) block; clicks go to Click/DoubleClick.
 # The full description (Hint) pops up on click, not on hover - HintArea($row, $x, $rect) can limit where.
+# A section with Collapsible = $true calls SectionClick($row) when clicked (expand / collapse).
 function New-RowList([scriptblock]$draw) {
     $p = New-Control Panel @{ Dock = 'Fill'; AutoScroll = $true; BackColor = $script:Style.Card }
     Enable-DoubleBuffer $p
-    $p.Tag = @{ Rows = @(); Draw = $draw; Hover = -1; Click = $null; DoubleClick = $null; HandCursor = $null; Hint = $null; HintArea = $null; EmptyText = '' }
+    $p.Tag = @{ Rows = @(); Draw = $draw; Hover = -1; Click = $null; DoubleClick = $null; HandCursor = $null; Hint = $null; HintArea = $null; SectionClick = $null; EmptyText = '' }
     $p.Add_Paint({
             $g = $_.Graphics; $t = $this.Tag; $s = $script:Style
             $g.Clear($this.BackColor)
@@ -36,6 +37,7 @@ function New-RowList([scriptblock]$draw) {
             if ($w -and -not $w.Section -and $t.Click) {
                 $hand = if ($t.HandCursor) { [bool](& $t.HandCursor $w $_.X (Get-RowRect $this $w)) } else { $true }
             }
+            elseif ($w -and $w.Collapsible -and $t.SectionClick) { $hand = $true }
             $this.Cursor = $(if ($hand) { [Windows.Forms.Cursors]::Hand } else { [Windows.Forms.Cursors]::Default })
             if ($i -ne $t.Hover) {
                 $t.Hover = $i
@@ -50,11 +52,11 @@ function New-RowList([scriptblock]$draw) {
             $i = Get-RowAt $this $_.Y
             if ($i -lt 0) { return }
             $w = $t.Rows[$i]
-            if ($w.Section) { return }
+            if ($w.Section) { if ($w.Collapsible -and $t.SectionClick) { & $t.SectionClick $w }; return }
             $r = Get-RowRect $this $w
             if ($t.Click) { & $t.Click $w $_.X $r }
             if ($t.Hint -and (-not $t.HintArea -or (& $t.HintArea $w $_.X $r))) {
-                $text = "$(& $t.Hint $w)"
+                $text = Format-HintText "$(& $t.Hint $w)"
                 if ($text) { $script:UI.Hint.Show($text, $this, $_.X + (Px 14), $_.Y + (Px 18), 20000) }
             }
         })
@@ -98,6 +100,8 @@ function Draw-Section($g, $w, $r) {
     $s = $script:Style
     $rightPart = if ($w.RightText) { & $w.RightText } else { '' }
     $rightW = if ($rightPart) { (Measure-TextWidth $rightPart $s.Small) + (Px 4) } else { 0 }
-    Draw-Text $g $w.Text $s.Bold $s.AccentText (Px 18) ($r.Y + (Px 8)) ($r.Width - (Px 50) - $rightW) ($r.Height - (Px 8))
+    $text = $w.Text
+    if ($w.Collapsible) { $text = '{0} {1}  ({2})' -f $(if ($w.Collapsed) { [char]0x25B8 } else { [char]0x25BE }), $text, $w.Count }
+    Draw-Text $g $text $s.Bold $s.AccentText (Px 18) ($r.Y + (Px 8)) ($r.Width - (Px 50) - $rightW) ($r.Height - (Px 8))
     Draw-Text $g $rightPart $s.Small $s.TextDim ($r.Width - (Px 18) - $rightW) ($r.Y + (Px 8)) $rightW ($r.Height - (Px 8)) 'Right'
 }

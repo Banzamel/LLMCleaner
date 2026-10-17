@@ -137,12 +137,34 @@ function New-Label([string]$text, [hashtable]$w = @{}) {
 }
 
 # Page header: title, description below it and buttons on the right (in left-to-right order)
+# Tooltips do not wrap long lines - break them at about $width characters
+function Format-HintText([string]$text, [int]$width = 80) {
+    $out = foreach ($line in ($text -split "`n")) {
+        $cur = ''
+        foreach ($word in ($line -split ' ')) {
+            if ($cur -and ($cur.Length + 1 + $word.Length) -gt $width) { $cur; $cur = $word } else { $cur = if ($cur) { "$cur $word" } else { $word } }
+        }
+        $cur
+    }
+    $out -join "`n"
+}
+
+# Page title with an "i" next to it: a click shows the page description ($desc). The line under the
+# title (Description) stays empty until a page writes its status there (e.g. the last scan).
 function New-PageHeader([string]$title, [string]$desc, [object[]]$buttons = @()) {
-    $n = New-Control Panel @{ Dock = 'Top'; Height = (Px 84) }
+    $s = $script:Style
+    $n = New-Control Panel @{ Dock = 'Top'; Height = (Px 76) }
     $leftPart = New-Control Panel @{ Dock = 'Fill' }
-    $o = New-Label $desc @{ Dock = 'Fill'; ForeColor = $script:Style.TextDim; AutoEllipsis = $true }
-    $t = New-Label $title @{ Dock = 'Top'; Height = (Px 44); Font = $script:Style.Title }
-    Add-Docked $leftPart @($t, $o)
+    $o = New-Label '' @{ Dock = 'Fill'; ForeColor = $s.TextDim; AutoEllipsis = $true }
+    $titleRow = New-Control Panel @{ Dock = 'Top'; Height = (Px 44) }
+    $t = New-Label $title @{ Dock = 'Left'; AutoSize = $true; Font = $s.Title }
+    $info = New-Label $(if ($s.Icons) { [string][char]0xE946 } else { [string][char]0x24D8 }) @{
+        Dock = 'Left'; Width = (Px 34); Font = $(if ($s.Icons) { $s.Icons } else { $s.CardTitle }); ForeColor = $s.AccentText
+        TextAlign = 'MiddleCenter'; Cursor = [Windows.Forms.Cursors]::Hand; Tag = $desc
+    }
+    $info.Add_Click({ $script:UI.Hint.Show((Format-HintText "$($this.Tag)"), $this, 0, $this.Height, 20000) })
+    Add-Docked $titleRow @($t, $info)
+    Add-Docked $leftPart @($titleRow, $o)
     $el = @()
     if ($buttons.Count) {
         $rightPart = New-Control Panel @{ Dock = 'Right'; Padding = (New-Padding 16 20 0 20) }
@@ -156,7 +178,7 @@ function New-PageHeader([string]$title, [string]$desc, [object[]]$buttons = @())
         $el += $rightPart
     }
     Add-Docked $n ($el + @($leftPart))
-    @{ Panel = $n; Description = $o; Title = $t }
+    @{ Panel = $n; Description = $o; Title = $t; Info = $info }
 }
 
 function New-Page {

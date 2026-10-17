@@ -5,6 +5,8 @@
 
 $script:PlanTab = 'plan'
 $script:PlanSort = @{ Key = 'size'; Desc = $true }
+# Groups start collapsed (header and total only); a click on the header expands it. Search shows everything.
+$script:PlanExpanded = @{}
 
 function Test-PlanFilter($o, [bool]$cat) {
     switch ($script:PlanFilter) {
@@ -27,11 +29,15 @@ function Get-GroupTotal($list) {
 function Get-LargeItems { @($script:Leftovers | Where-Object { $_ -and (Test-LargeItem $_) }) }
 
 # Adds a group header and its rows (filtered and sorted) to the list
-function Add-PlanGroup($rows, [string]$title, $all, [bool]$cat, [double]$max) {
+function Add-PlanGroup($rows, [string]$key, [string]$title, $all, [bool]$cat, [double]$max) {
     $shown = @(Sort-PlanItems @($all | Where-Object { Test-PlanFilter $_ $cat }) $cat)
     if (-not $shown.Count) { return }
     $everything = $all
-    $rows.Add(@{ Section = $true; H = (Px 42); Text = $title; RightText = { Get-GroupTotal $everything }.GetNewClosure() })
+    $collapsed = -not $script:PlanExpanded[$key] -and -not $script:UI.Search.Text.Trim()
+    $rows.Add(@{ Section = $true; H = (Px 42); Text = $title; Key = $key; Collapsible = $true; Collapsed = $collapsed; Count = $shown.Count
+            RightText = { Get-GroupTotal $everything }.GetNewClosure()
+        })
+    if ($collapsed) { return }
     foreach ($o in $shown) { $rows.Add(@{ H = (Px 60); Obj = $o; IsCategory = $cat; Max = $max }) }
 }
 
@@ -41,16 +47,16 @@ function Update-PlanPage {
     $large = Get-LargeItems
     if ($script:PlanTab -eq 'large') {
         $max = [double](@($large) | ForEach-Object { [double]$_.Bytes } | Measure-Object -Maximum).Maximum
-        Add-PlanGroup $rows (L 'Duże foldery (ponad 1 GB) - zwykle żywe gry i programy, sprawdź każdy' 'Large folders (over 1 GB) - often live games and programs, check each one') @($large | Where-Object { $_.Type -eq 'folder' }) $false $max
-        Add-PlanGroup $rows (L 'Duże pliki w profilu i w Pobranych' 'Large files in the profile and in Downloads') @($large | Where-Object { $_.Type -eq 'file' }) $false $max
+        Add-PlanGroup $rows 'largefolders' (L 'Duże foldery (ponad 1 GB) - zwykle żywe gry i programy, sprawdź każdy' 'Large folders (over 1 GB) - often live games and programs, check each one') @($large | Where-Object { $_.Type -eq 'folder' }) $false $max
+        Add-PlanGroup $rows 'largefiles' (L 'Duże pliki w profilu i w Pobranych' 'Large files in the profile and in Downloads') @($large | Where-Object { $_.Type -eq 'file' }) $false $max
     }
     else {
         $cat = @($script:Categories | Where-Object { $_.Bytes -gt 0 -or $_.Selected -or ($_.Type -in 'dns', 'dism', 'docker', 'dockerall') })
         $left = @($script:Leftovers | Where-Object { $_ -and -not (Test-LargeItem $_) })
         $max = [double](@($cat) + @($left) | ForEach-Object { [double]$_.Bytes } | Measure-Object -Maximum).Maximum
-        Add-PlanGroup $rows (L 'Kategorie czyszczenia - odtwarzają się same' 'Cleanup categories - they rebuild themselves') $cat $true $max
-        Add-PlanGroup $rows (L 'Pozostałości po odinstalowanych programach i grach' 'Leftovers of uninstalled programs and games') @($left | Where-Object { Test-GoesToRecycleBin $_ }) $false $max
-        Add-PlanGroup $rows (L 'Rejestr i zadania' 'Registry and tasks') @($left | Where-Object { -not (Test-GoesToRecycleBin $_) }) $false $max
+        Add-PlanGroup $rows 'categories' (L 'Kategorie czyszczenia - odtwarzają się same' 'Cleanup categories - they rebuild themselves') $cat $true $max
+        Add-PlanGroup $rows 'leftovers' (L 'Pozostałości po odinstalowanych programach i grach' 'Leftovers of uninstalled programs and games') @($left | Where-Object { Test-GoesToRecycleBin $_ }) $false $max
+        Add-PlanGroup $rows 'registry' (L 'Rejestr i zadania' 'Registry and tasks') @($left | Where-Object { -not (Test-GoesToRecycleBin $_) }) $false $max
     }
     $lv.Tag.EmptyText = if (-not $script:Scanned) { L 'Plan pojawi się po skanie. Wróć do Przeglądu i kliknij „Skanuj”.' 'The plan appears after a scan. Go back to Overview and click "Scan".' }
     elseif ($script:PlanTab -eq 'large' -and -not $large.Count) { L 'Skan nie znalazł dużych plików ani folderów.' 'The scan found no large files or folders.' }
@@ -77,7 +83,7 @@ function Update-PlanTotal {
 function New-PlanPage {
     $s = $script:Style
     $page = New-Page
-    $n = New-PageHeader (L 'Plan czyszczenia' 'Cleanup plan') (L 'Pole po lewej zaznacza pozycję, kliknięcie nazwy pokazuje pełny opis, a nagłówek kolumny sortuje listę. Pliki i foldery trafiają do Kosza, rejestr i zadania mają kopię i punkt przywracania.' 'The box on the left ticks an item, clicking its name shows the full description and a column header sorts the list. Files and folders go to the Recycle Bin; registry entries and tasks get a backup and a restore point.')
+    $n = New-PageHeader (L 'Plan czyszczenia' 'Cleanup plan') (L 'Kliknij nagłówek grupy, żeby ją rozwinąć. Pole po lewej zaznacza pozycję, kliknięcie nazwy pokazuje pełny opis, a nagłówek kolumny sortuje listę. Pliki i foldery trafiają do Kosza, rejestr i zadania mają kopię i punkt przywracania.' 'Click a group header to expand it. The box on the left ticks an item, clicking its name shows the full description and a column header sorts the list. Files and folders go to the Recycle Bin; registry entries and tasks get a backup and a restore point.')
 
     # Tabs: the plan and large files/folders (never ticked in advance)
     $tabBar = New-Control Panel @{ Dock = 'Top'; Height = (Px 40) }
@@ -122,6 +128,7 @@ function New-PlanPage {
         Update-PlanTotal
     }
     $lv.Tag.HintArea = { param($w, $x, $r) $x -ge (Get-PlanColumns $r.Width).Name }
+    $lv.Tag.SectionClick = { param($w) $script:PlanExpanded[$w.Key] = [bool]$w.Collapsed; Update-PlanPage }
     $lv.Tag.Hint = { param($w) Get-PlanHint $w }
     $lv.Tag.DoubleClick = { param($w) $o = $w.Obj; if (-not $w.IsCategory -and (Test-GoesToRecycleBin $o) -and (Test-Path -LiteralPath $o.Path)) { Start-Process explorer.exe -ArgumentList "/select,`"$($o.Path)`"" } }
     $lv.Add_Resize({ if ($script:UI.PlanColumns) { $script:UI.PlanColumns.Invalidate() } })

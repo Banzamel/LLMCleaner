@@ -14,15 +14,16 @@ function Get-ConfidenceStyle([string]$p) {
 
 function Get-PlanBadge($o, [bool]$cat) {
     $s = $script:Style
-    if ($cat) { return @{ T = (L 'KAT' 'CAT'); Background = $s.AccentLight; Color = $s.AccentText } }
+    # Icon: Segoe MDL2 Assets glyph (cache that rebuilds itself, folder, file, link, task, registry); T without the font
+    if ($cat) { return @{ T = (L 'KAT' 'CAT'); Icon = 0xE895; Background = $s.AccentLight; Color = $s.AccentText } }
     switch ($o.Type) {
-        'folder' { @{ T = 'DIR'; Background = $s.WarnBack; Color = $s.WarnText } }
+        'folder' { @{ T = 'DIR'; Icon = 0xE8B7; Background = $s.WarnBack; Color = $s.WarnText } }
         'file' {
-            if ($o.Path -like '*.lnk') { @{ T = 'LNK'; Background = $s.BlueBack; Color = $s.BlueText } }
-            else { @{ T = (L 'PLIK' 'FILE'); Background = $s.BlueBack; Color = $s.BlueText } }
+            if ($o.Path -like '*.lnk') { @{ T = 'LNK'; Icon = 0xE71B; Background = $s.BlueBack; Color = $s.BlueText } }
+            else { @{ T = (L 'PLIK' 'FILE'); Icon = 0xE8A5; Background = $s.BlueBack; Color = $s.BlueText } }
         }
-        'task' { @{ T = (L 'ZAD' 'TASK'); Background = $s.OkBack; Color = $s.OkText } }
-        default { @{ T = 'REG'; Background = $s.PurpleBack; Color = $s.PurpleText } }
+        'task' { @{ T = (L 'ZAD' 'TASK'); Icon = 0xE823; Background = $s.OkBack; Color = $s.OkText } }
+        default { @{ T = 'REG'; Icon = 0xE713; Background = $s.PurpleBack; Color = $s.PurpleText } }
     }
 }
 
@@ -55,7 +56,8 @@ function Draw-PlanRow($g, $w, $r, [bool]$hover) {
     Draw-CheckBox $g $k.Field ($mid - (Px 9)) ([bool]$o.Selected) ($disabled -or [bool]$script:Cleaned)
     $badge = Get-PlanBadge $o $cat
     Draw-Rect $g $k.Badge ($mid - (Px 16)) (Px 32) (Px 32) $badge.Background (Px 8)
-    Draw-Text $g $badge.T $s.Badge $badge.Color $k.Badge ($mid - (Px 16)) (Px 32) (Px 32) 'HorizontalCenter'
+    if ($s.Icons) { Draw-Text $g ([string][char]$badge.Icon) $s.Icons $badge.Color $k.Badge ($mid - (Px 16)) (Px 32) (Px 32) 'HorizontalCenter' }
+    else { Draw-Text $g $badge.T $s.Badge $badge.Color $k.Badge ($mid - (Px 16)) (Px 32) (Px 32) 'HorizontalCenter' }
     $name = if ($cat) { $o.Name } else { Format-Leftover $o }
     $desc = Get-PlanDescription $o $cat
     Draw-Text $g $name $s.Bold $(if ($disabled) { $s.TextDim } else { $s.Text }) $k.Name ($mid - (Px 22)) $k.NameWidth (Px 22)

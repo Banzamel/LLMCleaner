@@ -242,7 +242,9 @@ function Invoke-Cleanup {
     $timer.Stop()
     $freeAfter = Get-SystemFreeSpace
     Write-Log ("Done. Removed {0}, free on {1}: {2} -> {3}" -f (Format-Size $total), $Sys, (Format-Size $script:FreeBefore), (Format-Size $freeAfter))
-    @{ Total = $total; Duration = $timer.Elapsed; FreeBefore = $script:FreeBefore; FreeAfter = $freeAfter; Backups = $backups }
+    $result = @{ Total = $total; Duration = $timer.Elapsed; FreeBefore = $script:FreeBefore; FreeAfter = $freeAfter; Backups = $backups }
+    Add-CleanupHistory $result
+    $result
 }
 
 # Summary text after cleanup (lines)

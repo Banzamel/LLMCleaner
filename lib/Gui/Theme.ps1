@@ -20,7 +20,7 @@ $script:Dark = [bool](Test-DarkTheme)
 
 $LightPalette = @{
     Background = '#F3F4F8'; Card = '#FFFFFF'; Tile = '#F6F7FB'; Border = '#E2E5EE'; ButtonBorder = '#D5D9E4'; Line = '#F0F1F5'
-    Text = '#1F2333'; TextDim = '#5B6170'; Row = '#F8F9FC'
+    Text = '#1F2333'; TextDim = '#4B5161'; Row = '#F8F9FC'
     Accent = '#2563EB'; AccentHover = '#1D4ED8'; AccentPressed = '#1E40AF'; AccentLight = '#EEF2FF'; AccentLightHover = '#E0E7FF'; AccentText = '#1D4ED8'
     Green = '#16A34A'; GreenHover = '#15803D'; Warning = '#B45309'; Red = '#B91C1C'; Ai = '#0F5E59'
     Track = '#EEF0F5'; GreyBar = '#A3A9B8'; Field = '#B8BDC9'; ToggleOff = '#B8BDC9'; TileProtected = '#6B7280'
@@ -33,12 +33,12 @@ $LightPalette = @{
 }
 $DarkPalette = @{
     Background = '#0F1220'; Card = '#181C2C'; Tile = '#20253A'; Border = '#262B40'; ButtonBorder = '#343A55'; Line = '#20253A'
-    Text = '#E6E8F0'; TextDim = '#A3A9BD'; Row = '#1D2133'
+    Text = '#EEF0F6'; TextDim = '#BCC2D4'; Row = '#1D2133'
     Accent = '#3B82F6'; AccentHover = '#2563EB'; AccentPressed = '#1D4ED8'; AccentLight = '#1E2A4D'; AccentLightHover = '#25345F'; AccentText = '#BFD0FF'
     Green = '#22C55E'; GreenHover = '#16A34A'; Warning = '#F59E0B'; Red = '#EF4444'; Ai = '#5EEAD4'
-    Track = '#2A3048'; GreyBar = '#4B5368'; Field = '#4B5368'; ToggleOff = '#3A4160'; TileProtected = '#4B5563'
+    Track = '#2A3048'; GreyBar = '#5A6380'; Field = '#5A6380'; ToggleOff = '#3A4160'; TileProtected = '#4B5563'
     Disabled = '#2A3048'; TextDisabled = '#5B6378'; Segment = '#20253A'; SegmentSelected = '#2F3652'
-    NavBack = '#0A0C17'; NavHover = '#151933'; NavSelectedBack = '#1E2440'; NavText = '#C3C8DA'; NavDim = '#A3A9BD'
+    NavBack = '#0A0C17'; NavHover = '#151933'; NavSelectedBack = '#1E2440'; NavText = '#D3D7E5'; NavDim = '#B4BACD'
     NoteBack = '#2A2410'; NoteBorder = '#4A3B12'; NoteText = '#FCD34D'
     SuccessBack = '#0F2A1C'; SuccessBorder = '#14532D'; SuccessText = '#86EFAC'
     OkBack = '#12301F'; OkText = '#86EFAC'; WarnBack = '#3A2E12'; WarnText = '#FCD34D'; ErrorBack = '#3A1618'; ErrorText = '#FCA5A5'; NeutralBack = '#2A3048'; NeutralText = '#A3A9BD'
@@ -49,24 +49,26 @@ $script:Style = @{}
 $palette = if ($script:Dark) { $DarkPalette } else { $LightPalette }
 foreach ($k in $palette.Keys) { $script:Style[$k] = ConvertTo-Color $palette[$k] }
 $fonts = (New-Object Drawing.Text.InstalledFontCollection).Families.Name
-# All window fonts are here (in points - Windows converts them to pixels by DPI)
-$script:Style.Body = New-Object Drawing.Font('Segoe UI', 10)
-$script:Style.Small = New-Object Drawing.Font('Segoe UI', 9.5)
-$script:Style.SmallBold = New-Object Drawing.Font('Segoe UI Semibold', 9)
-$script:Style.Badge = New-Object Drawing.Font('Segoe UI Semibold', 8)
-$script:Style.Column = New-Object Drawing.Font('Segoe UI Semibold', 8.5)
-$script:Style.Bold = New-Object Drawing.Font('Segoe UI Semibold', 10.5)
-$script:Style.ButtonFont = New-Object Drawing.Font('Segoe UI Semibold', 10.5)
+# All window fonts are here (in points - Windows converts them to pixels by DPI).
+# Light text on a dark background looks thinner, so the dark theme uses text half a point larger.
+$fontPlus = if ($script:Dark) { 0.5 } else { 0 }
+$script:Style.Body = New-Object Drawing.Font('Segoe UI', (10 + $fontPlus))
+$script:Style.Small = New-Object Drawing.Font('Segoe UI', (9.5 + $fontPlus))
+$script:Style.SmallBold = New-Object Drawing.Font('Segoe UI Semibold', (9 + $fontPlus))
+$script:Style.Badge = New-Object Drawing.Font('Segoe UI Semibold', (8 + $fontPlus))
+$script:Style.Column = New-Object Drawing.Font('Segoe UI Semibold', (8.5 + $fontPlus))
+$script:Style.Bold = New-Object Drawing.Font('Segoe UI Semibold', (10.5 + $fontPlus))
+$script:Style.ButtonFont = New-Object Drawing.Font('Segoe UI Semibold', (10.5 + $fontPlus))
 $script:Style.CardTitle = New-Object Drawing.Font('Segoe UI Semibold', 12)
 $script:Style.Medium = New-Object Drawing.Font('Segoe UI Semibold', 13)
 $script:Style.Number = New-Object Drawing.Font('Segoe UI Semibold', 16)
 $script:Style.Logo = New-Object Drawing.Font('Segoe UI Semibold', 13)
 $script:Style.Title = New-Object Drawing.Font('Segoe UI Semibold', 19)
 $script:Style.Large = New-Object Drawing.Font('Segoe UI Semibold', 26)
-$script:Style.Nav = New-Object Drawing.Font('Segoe UI', 10.5)
-$script:Style.NavSelected = New-Object Drawing.Font('Segoe UI Semibold', 10.5)
-$script:Style.Input = New-Object Drawing.Font('Segoe UI', 10.5)
-$script:Style.Mono = New-Object Drawing.Font('Consolas', 9.5)
+$script:Style.Nav = New-Object Drawing.Font('Segoe UI', (10.5 + $fontPlus))
+$script:Style.NavSelected = New-Object Drawing.Font('Segoe UI Semibold', (10.5 + $fontPlus))
+$script:Style.Input = New-Object Drawing.Font('Segoe UI', (10.5 + $fontPlus))
+$script:Style.Mono = New-Object Drawing.Font('Consolas', (9.5 + $fontPlus))
 # Icons from the Windows 10/11 font; without it the navigation simply has no icons
 if ($fonts -contains 'Segoe MDL2 Assets') {
     $script:Style.Icons = New-Object Drawing.Font('Segoe MDL2 Assets', 12)

@@ -114,6 +114,30 @@ function Draw-CleanupResult($g, $p) {
     Draw-Text $g $small $s.Small $color (Px 18) (Px 10) ($p.Width - (Px 36)) (Px 20)
     Draw-Text $g $bigText $s.Large $color (Px 14) (Px 30) ($p.Width - (Px 30)) (Px 56)
     Draw-Text $g $bottom $s.Small $color (Px 18) (Px 88) ($p.Width - (Px 36)) (Px 20)
+    if ($w) { Draw-FreeSpaceBars $g $p $w $color }
+}
+
+# Free space on the system drive before and after, as two bars on the same scale
+function Draw-FreeSpaceBars($g, $p, $w, $color) {
+    $s = $script:Style
+    $max = [Math]::Max(1.0, [Math]::Max([double]$w.FreeBefore, [double]$w.FreeAfter))
+    $labelW = Px 60; $sizeW = Px 80
+    $trackW = $p.Width - (Px 36) - $labelW - $sizeW
+    $y = Px 122
+    foreach ($b in @(@{ T = (L 'przed' 'before'); V = [double]$w.FreeBefore; K = $s.GreyBar }, @{ T = (L 'po' 'after'); V = [double]$w.FreeAfter; K = $s.Green })) {
+        Draw-Text $g $b.T $s.Small $color (Px 18) $y $labelW (Px 20)
+        Draw-Rect $g ((Px 18) + $labelW) ($y + (Px 5)) $trackW (Px 10) $s.Track (Px 5)
+        Draw-Rect $g ((Px 18) + $labelW) ($y + (Px 5)) ([int][Math]::Max((Px 10), $trackW * $b.V / $max)) (Px 10) $b.K (Px 5)
+        Draw-Text $g (Format-Size $b.V) $s.SmallBold $color ($p.Width - (Px 18) - $sizeW) $y $sizeW (Px 20) 'Right'
+        $y += Px 26
+    }
+}
+
+# Previous cleanups (history.json), newest first
+function Update-CleanupHistory {
+    $list = @(Get-CleanupHistory | Select-Object -First 5)
+    $script:UI.HistoryText.Text = if (-not $list.Count) { L 'Tu pojawią się poprzednie czyszczenia.' 'Previous cleanups will appear here.' }
+    else { ($list | ForEach-Object { (L '{0}   zwolniono {1}   (wolne {2} → {3})' '{0}   {1} freed   (free {2} → {3})') -f $_.Date, (Format-Size $_.Total), (Format-Size $_.FreeBefore), (Format-Size $_.FreeAfter) }) -join "`r`n" }
 }
 
 # Cleanup with a progress screen: steps, bar, result. Confirmation happens earlier (button).
@@ -147,6 +171,7 @@ function Start-WindowCleanup {
     $script:UI.ResultInfo.Text = $info -join "`r`n"
     $script:UI.ResultTitle.Text = L 'Gotowe' 'Done'
     $script:UI.ResultButtons.Visible = $true
+    Update-CleanupHistory
     Update-Steps
     Write-WindowLog ''
     foreach ($x in (Get-CleanupSummary $w)) { Write-WindowLog "  $x" 'White' }
@@ -174,9 +199,9 @@ function New-CleanupPage {
     Add-Docked $left @($n.Panel, $cardProgress, (New-Spacer 'Top' 16), $cardSteps)
     $script:UI.ProgressCanvas = $progressCanvas; $script:UI.LvSteps = $lv
 
-    $cardResult = New-Card @{ Dock = 'Top'; Height = (Px 380); Padding = (New-Padding 24 20 24 20) }
+    $cardResult = New-Card @{ Dock = 'Top'; Height = (Px 440); Padding = (New-Padding 24 20 24 20) }
     $titleResult = New-Label '' @{ Dock = 'Top'; Height = (Px 34); Font = $s.CardTitle }
-    $field = New-Canvas @{ Dock = 'Top'; Height = (Px 116); BackColor = $s.Card } { param($g, $p) Draw-CleanupResult $g $p }
+    $field = New-Canvas @{ Dock = 'Top'; Height = (Px 178); BackColor = $s.Card } { param($g, $p) Draw-CleanupResult $g $p }
     $info = New-Label '' @{ Dock = 'Fill'; AutoEllipsis = $true }
     $buttonPanel = New-Control Panel @{ Dock = 'Bottom'; Height = (Px 44); Visible = $false }
     $btnRescan = New-Button (L 'Skanuj ponownie' 'Scan again') 'primary' @{ Dock = 'Left'; Width = (Px 170) }
@@ -187,9 +212,16 @@ function New-CleanupPage {
     $btnLog.Add_Click({ if (Test-Path -LiteralPath $LogFile) { Start-Process notepad.exe -ArgumentList "`"$LogFile`"" } })
     $script:UI.ResultTitle = $titleResult; $script:UI.ResultCanvas = $field; $script:UI.ResultInfo = $info; $script:UI.ResultButtons = $buttonPanel; $script:UI.BtnResultScan = $btnRescan
 
+    $cardHistory = New-Card @{ Dock = 'Top'; Height = (Px 170); Padding = (New-Padding 24 16 24 14) }
+    $titleHistory = New-Label (L 'Poprzednie czyszczenia' 'Previous cleanups') @{ Dock = 'Top'; Height = (Px 30); Font = $s.CardTitle }
+    $historyText = New-Label '' @{ Dock = 'Fill'; ForeColor = $s.TextDim; Font = $s.Small; AutoEllipsis = $true }
+    Add-Docked $cardHistory @($titleHistory, $historyText)
+    $script:UI.HistoryText = $historyText
+    Update-CleanupHistory
+
     $cardNote = New-Card @{ Dock = 'Top'; Height = (Px 86); Padding = (New-Padding 24 16 24 14) }
     $cardNote.Controls.Add((New-Label (L 'Postęp jest też widoczny na ikonie LLMCleanera na pasku zadań, więc okno może pracować w tle.' 'Progress is also shown on the LLMCleaner taskbar icon, so the window can work in the background.') @{ Dock = 'Fill'; ForeColor = $s.TextDim; Font = $s.Small }))
-    Add-Docked $aside @($cardResult, (New-Spacer 'Top' 16), $cardNote)
+    Add-Docked $aside @($cardResult, (New-Spacer 'Top' 16), $cardHistory, (New-Spacer 'Top' 16), $cardNote)
 
     $script:UI.Aside = $aside
     Add-Docked $page @($aside, (New-Spacer 'Right' 18), $left)
